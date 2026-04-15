@@ -1,0 +1,17 @@
+[
+  {
+    "label": "General Discussion",
+    "path": "/category/2/general-discussion",
+    "source": "home",
+    "require_login": false,
+    "page_type": "category",
+    "navigation_steps": [
+      "I open the forum home page",
+      "I click the \"General Discussion\" category from the home page"
+    ],
+    "assertions": [
+      "The browser URL should end with \"/category/2/general-discussion\"",
+      "The page title or primary heading should show \"General Discussion\""
+    ]
+  }
+]

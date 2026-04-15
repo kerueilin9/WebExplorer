@@ -1,0 +1,22 @@
+{
+  "sites": ["{{ site_name }}"],
+  "task_id": "{{ task_id }}",
+  "require_login": {{ require_login }},
+  "storage_state": {{ storage_state }},
+  "start_url": "{{ start_url }}",
+  "geolocation": null,
+  "gherkin": {
+    "feature": "{{ feature }}",
+    "scenario": "{{ scenario }}",
+    "given": ["{{ given }}"],
+    "when": {{ when_steps }},
+    "then": {{ then_steps }}
+  },
+  "require_reset": false,
+  "eval": {
+    "eval_types": ["gherkin_criteria"],
+    "reference_answers": {
+      "gherkin_acceptance_criteria": {{ acceptance_criteria }}
+    }
+  }
+}
