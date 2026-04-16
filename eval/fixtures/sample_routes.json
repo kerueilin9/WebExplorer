@@ -1,17 +1,17 @@
 [
   {
-    "label": "General Discussion",
-    "path": "/category/2/general-discussion",
+    "label": "Project Alpha",
+    "path": "/projects/42",
     "source": "home",
     "require_login": false,
-    "page_type": "category",
+    "page_type": "detail",
     "navigation_steps": [
-      "I open the forum home page",
-      "I click the \"General Discussion\" category from the home page"
+      "I open the configured home page",
+      "I click the \"Project Alpha\" link from the home page"
     ],
     "assertions": [
-      "The browser URL should end with \"/category/2/general-discussion\"",
-      "The page title or primary heading should show \"General Discussion\""
+      "The browser URL should include \"/projects/42\"",
+      "The page title or primary heading should show \"Project Alpha\""
     ]
   }
 ]

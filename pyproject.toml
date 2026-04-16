@@ -14,6 +14,18 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 include-package-data = true
+packages = [
+  "adk_playwright_agent",
+  "adk_playwright_agent.app",
+  "adk_playwright_agent.tools",
+  "adk_playwright_agent.adapters",
+]
+
+[tool.setuptools.package-dir]
+"adk_playwright_agent" = "."
+"adk_playwright_agent.app" = "app"
+"adk_playwright_agent.tools" = "tools"
+"adk_playwright_agent.adapters" = "adapters"
 
 [tool.setuptools.package-data]
 adk_playwright_agent = [

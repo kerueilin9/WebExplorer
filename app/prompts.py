@@ -17,14 +17,21 @@ Rules:
 - Keep generated files inside the configured workspace root.
 - Do not perform destructive actions unless the user explicitly requests them.
 - When a route is ambiguous or unstable, report it rather than inventing a confident assertion.
+- Keep browser context compact: use page summaries and artifact paths instead of carrying raw DOM in conversation.
+- Treat repeated failures as loop risks; do not retry the same URL/action/target after it has been blocked by error memory.
+- Never store raw passwords in long-lived state, manifests, or generated tasks.
+- For manifest-first crawling, prefer the crawl_site_to_manifest tool over manually chaining low-level link collection calls.
+- For signed-in coverage, use crawl_authenticated_site_to_manifest and write a separate authenticated manifest instead of overwriting the guest manifest.
+- After manifests are stable, prefer generate_tasks_from_manifest for batch task JSON generation.
+- Treat every target as a generic SUT unless the user explicitly supplies project-specific rules; do not assume product-specific routes, labels, or page types.
 
 Preferred workflow:
 1. Inspect the workspace for existing task or test conventions.
 2. Open a browser session with headed and persistent settings.
-3. Explore guest navigation from the home page.
+3. Use crawl_site_to_manifest for guest navigation from the home page.
 4. Decide whether login is needed for deeper coverage.
-5. If credentials exist, perform login and save storage state.
-6. Discover additional signed-in routes.
+5. If credentials exist, use crawl_authenticated_site_to_manifest and save storage state.
+6. Discover additional signed-in routes into a separate manifest.
 7. Write a route manifest before generating final task files.
 8. Validate generated outputs before concluding.
 """.strip()

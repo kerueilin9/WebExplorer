@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).with_name(".env"))
 
 from adk_playwright_agent.app.prompts import ROOT_AGENT_INSTRUCTION
 from adk_playwright_agent.tools.browser_tools import (
@@ -19,8 +24,13 @@ from adk_playwright_agent.tools.browser_tools import (
     save_storage_state,
     snapshot,
 )
+from adk_playwright_agent.tools.crawler_tools import (
+    crawl_authenticated_site_to_manifest,
+    crawl_site_to_manifest,
+)
 from adk_playwright_agent.tools.generator_tools import (
     generate_task_file,
+    generate_tasks_from_manifest,
     write_route_manifest,
 )
 from adk_playwright_agent.tools.validation_tools import (
@@ -70,11 +80,14 @@ def _build_root_agent():
             FunctionTool(login_from_notes),
             FunctionTool(save_storage_state),
             FunctionTool(close_browser),
+            FunctionTool(crawl_site_to_manifest),
+            FunctionTool(crawl_authenticated_site_to_manifest),
             FunctionTool(list_files),
             FunctionTool(read_text_file),
             FunctionTool(write_text_file, require_confirmation=True),
-            FunctionTool(write_route_manifest, require_confirmation=True),
+            FunctionTool(write_route_manifest),
             FunctionTool(generate_task_file, require_confirmation=True),
+            FunctionTool(generate_tasks_from_manifest),
             FunctionTool(validate_task_file),
             FunctionTool(validate_task_directory),
         ],

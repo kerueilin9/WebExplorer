@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -19,7 +20,9 @@ class PlaywrightCliAdapter:
     """Execute structured playwright-cli commands."""
 
     def __init__(self, cli_bin: str | None = None, cwd: Path | None = None) -> None:
-        self.cli_bin = cli_bin or os.getenv("PLAYWRIGHT_CLI_BIN", "playwright-cli")
+        requested_cli = cli_bin or os.getenv("PLAYWRIGHT_CLI_BIN", "playwright-cli")
+        self.command_prefix = self._resolve_cli_command(requested_cli)
+        self.cli_bin = self.command_prefix[0]
         workspace_root = os.getenv("AGENT_WORKSPACE_ROOT")
         self.cwd = cwd or Path(workspace_root or Path.cwd()).resolve()
 
@@ -77,7 +80,7 @@ class PlaywrightCliAdapter:
         return [f"-s={session_name}"]
 
     def _run(self, args: list[str], timeout_sec: int = 90) -> CommandResult:
-        command = [self.cli_bin, *args]
+        command = [*self.command_prefix, *args]
         completed = subprocess.run(
             command,
             cwd=self.cwd,
@@ -103,12 +106,48 @@ class PlaywrightCliAdapter:
             snapshot_path=snapshot_path,
         )
 
+    @staticmethod
+    def _resolve_cli_command(value: str) -> list[str]:
+        candidate = Path(value)
+        if candidate.is_absolute() and candidate.exists():
+            return _expand_windows_npm_cmd(candidate)
+
+        resolved = shutil.which(value)
+        if resolved:
+            return _expand_windows_npm_cmd(Path(resolved))
+
+        for suffix in (".cmd", ".exe", ".bat", ".ps1"):
+            resolved = shutil.which(f"{value}{suffix}")
+            if resolved:
+                return _expand_windows_npm_cmd(Path(resolved))
+
+        raise FileNotFoundError(
+            f"Could not resolve '{value}' in PATH. Set PLAYWRIGHT_CLI_BIN to an absolute path if needed."
+        )
+
 
 def _match_value(pattern: re.Pattern[str], text: str) -> str | None:
     match = pattern.search(text)
     if not match:
         return None
     return match.group("value").strip()
+
+
+def _expand_windows_npm_cmd(path: Path) -> list[str]:
+    """Avoid .cmd argument parsing so URLs containing '&' stay intact on Windows."""
+
+    if path.suffix.lower() not in {".cmd", ".bat"}:
+        return [str(path)]
+
+    script = path.parent / "node_modules" / "@playwright" / "cli" / "playwright-cli.js"
+    if not script.exists():
+        return [str(path)]
+
+    node = path.parent / "node.exe"
+    if not node.exists():
+        resolved_node = shutil.which("node")
+        node = Path(resolved_node) if resolved_node else Path("node")
+    return [str(node), str(script)]
 
 
 def _coerce_raw_value(stdout: str):
