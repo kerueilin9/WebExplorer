@@ -5,7 +5,7 @@ description = "ADK scaffold for a web exploration and test authoring agent power
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "google-adk>=1.29.0,<2.0",
+  "google-adk>=1.31.0,<2.0",
 ]
 
 [build-system]
@@ -29,6 +29,7 @@ packages = [
 
 [tool.setuptools.package-data]
 adk_playwright_agent = [
+  "docs/adk-playwright-agent/*.md",
   "templates/*.json",
   "templates/*.ts",
   "eval/criteria/*.md",
