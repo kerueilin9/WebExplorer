@@ -63,7 +63,7 @@ Responsibilities:
 Responsibilities:
 
 - map each accepted route into a navigation task (`Navigate to ...`)
-- revisit accepted routes and infer page actions (create/edit/search/filter)
+- revisit canonical accepted routes with `playwright-cli` and infer page actions from live UI evidence
 - map inferred actions into workflow tasks (`Create Employee`, etc.)
 - preserve project conventions
 - include login metadata when needed
@@ -138,18 +138,23 @@ Exit criteria:
 
 ### Phase 5. Action intent discovery
 
-Scan each accepted route for workflow intents that can become test cases.
+Use browser-backed exploration to inspect each canonical accepted route for
+workflow intents that can become test cases. This phase must not rely only on
+static route manifest metadata.
 
 Deliverables:
 
+- canonical action route worklist with query-string variants folded into their base path
+- per-route browser exploration evidence
 - action intent catalog
 - route-to-intent mapping
 - safety classification for each intent
 
 Exit criteria:
 
-- create/edit/search/filter intents are detected when present
-- intents include enough evidence to generate deterministic tasks
+- create/edit/search/filter intents are detected from live page evidence when present
+- each intent includes snapshot/DOM evidence sufficient to generate deterministic tasks
+- routes such as `/calendar/teamview?department=1&date=2026-03` are folded into `/calendar/teamview` and not explored or generated separately
 
 ### Phase 6. Action task generation
 
@@ -217,11 +222,12 @@ The MVP should be considered done when all of the following are true:
 
 The expanded target should be considered done when all of the following are true:
 
-- the agent inspects each accepted route for page-level workflows
+- the agent uses `playwright-cli` to inspect each canonical accepted route for page-level workflows
 - the agent generates action tasks for detected safe workflows
 - create flows generate create-style tasks (for example, `Create Employee`)
 - action tasks include form inputs, submit actions, and success assertions
 - destructive or high-risk submits require explicit confirmation policy
+- query-string variants are skipped or folded and do not produce separate action tasks
 
 ## Expanded Acceptance Criteria (Skillized Workflows)
 
@@ -261,7 +267,7 @@ Questions:
 - do navigation steps match an actual click path
 - do assertions fit the page type
 - do overlay workflows avoid over-reliance on URL checks
-- do action tasks represent actual workflow intents from discovered pages
+- do action tasks represent actual workflow intents observed through browser-backed page exploration
 
 ## Suggested Evaluation Fixtures
 
@@ -360,7 +366,7 @@ After approving this design, the next implementation slice should be:
 
 1. keep manifest-first crawl as the first pass
 2. generate route-level navigation tasks
-3. add route-to-action intent discovery as a second pass
+3. add browser-backed route-to-action discovery as a second pass
 4. generate action tasks from the intent catalog
 5. validate both navigation and action task outputs
 6. package the sequence as `manifest-first-route-workflow` skill

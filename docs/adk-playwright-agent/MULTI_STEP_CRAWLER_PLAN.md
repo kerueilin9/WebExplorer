@@ -20,7 +20,7 @@ The execution target is route-first generation:
 
 1. Crawl and produce a stable route manifest.
 2. Generate navigation tasks from the route manifest.
-3. Revisit routes and produce an action intent catalog.
+3. Revisit canonical routes with `playwright-cli` and produce browser-backed action evidence.
 4. Generate action tasks from the action intent catalog.
 
 ## Skillized Operator Entry
@@ -84,8 +84,9 @@ flowchart TD
     Q --> C
   M --> O["route_manifest.json"]
   O --> X["Navigation Task Generator"]
-  O --> I["Action Intent Extractor"]
-  I --> J["action_intents.json"]
+  O --> W["Canonical Action Worklist"]
+  W --> I["Browser-Backed Action Discovery Agent"]
+  I --> J["action evidence / action_intents.json"]
   J --> T["Action Task Generator"]
 ```
 
@@ -183,13 +184,20 @@ Examples:
 - `/projects/42/` -> `/projects/42`
 - `/reports?sort=newest&utm_source=test` -> canonical path plus non-tracking query metadata if needed
 
+For action discovery, query-string variants must be folded into one canonical
+path. If both `/calendar/teamview` and
+`/calendar/teamview?department=1&date=2026-03` exist, only
+`/calendar/teamview` should be opened by the action-discovery agent and only
+that canonical path can produce action tasks.
+
 ### 6. Manifest Writer
 
 Writes a JSON manifest that becomes the single source of truth for later task/test generation.
 
-### 7. Action Intent Extractor
+### 7. Browser-Backed Action Discovery
 
-Inspects each accepted route and collects workflow intents.
+Uses `playwright-cli` to open each canonical accepted route and collect workflow
+intents from the live page.
 
 Examples:
 
@@ -197,7 +205,9 @@ Examples:
 - `edit employee` on `/users/edit/:id`
 - `search employees` on `/users`
 
-The extractor should return structured intent metadata, not only free-form text.
+The browser-backed pass should return structured evidence and intent metadata,
+not only free-form text. Static manifest scanning can be used only as a cheap
+prefilter; it is not sufficient for generating final action tasks.
 
 ### 8. Action Task Generator
 
@@ -447,22 +457,40 @@ Strategy:
 4. Record an overlay workflow route with `validation_mode: "ui_evidence"`.
 5. Do not submit the form.
 
-### Phase 5. Route-to-Action Intent Scan
+### Phase 5. Browser-Backed Route-to-Action Discovery
 
-After route crawling is stable, inspect each accepted route for workflow intents.
+After route crawling is stable, inspect each canonical accepted route for
+workflow intents by opening the route in a live `playwright-cli` browser session.
+Do not generate action tasks from static manifest metadata alone.
 
 Steps:
 
-1. Open each route in deterministic order.
-2. Collect form fields, submit controls, and workflow labels.
-3. Classify intents (`create`, `edit`, `search`, `filter`, `approve`, etc.).
-4. Record intent evidence, required inputs, and safety level.
-5. Write `action_intents.json`.
+1. Build a canonical route worklist from the guest/auth manifests.
+2. Fold query-string variants into their queryless canonical path.
+3. Open each canonical route in deterministic order.
+4. Capture snapshot, headings, forms, tables/lists, and primary controls.
+5. Let the action-discovery agent reason over the live page evidence.
+6. Click only safe reveal controls such as menus, tabs, drawers, and non-submitting modal openers.
+7. Classify intents (`create`, `edit`, `search`, `filter`, `open_details`, etc.).
+8. Record intent evidence, required inputs, attempted safe clicks, blocked actions, and safety level.
+9. Write per-route discovery evidence and `action_intents.json`.
 
 Expected output:
 
+- canonical action worklist
+- per-route browser evidence files
 - route-to-intent mapping
 - reusable action catalog for task generation
+
+Query-string example:
+
+```text
+/calendar/teamview?department=1&date=2026-03
+/calendar/teamview
+```
+
+Only `/calendar/teamview` enters action discovery. The query-string route is
+recorded as a folded variant and must not generate a separate action task.
 
 ### Phase 6. Action Task Generation
 
@@ -785,17 +813,20 @@ Acceptance:
 - generated tasks preserve navigation path from home
 - task validation passes
 
-### Milestone 6. Route-to-Action Intent Extraction
+### Milestone 6. Browser-Backed Route-to-Action Discovery
 
 Deliverables:
 
-- route action scan pass
+- canonical action route worklist
+- route action browser exploration pass
+- per-route evidence artifacts
 - action intent catalog (`action_intents.json`)
 
 Acceptance:
 
-- create/edit/search intents are extracted where present
-- each intent has route provenance and evidence
+- create/edit/search intents are extracted where present from live browser evidence
+- each intent has route provenance, snapshot/DOM evidence, and safety classification
+- query-string variants are folded into canonical paths and skipped for separate task generation
 
 ### Milestone 7. Action Task Generation
 
@@ -823,7 +854,7 @@ Acceptance:
 
 ## Open Questions
 
-- Should query-string variants be considered separate routes?
+- Should query-string variants ever be promoted to separate action-discovery targets through an explicit opt-in policy?
 - Should user profile pages discovered from content be included by default?
 - Should admin diagnostics pages be included in the first admin crawl?
 - How much UI evidence should be stored for overlays?
@@ -833,7 +864,7 @@ Acceptance:
 
 If route crawl and navigation task generation are already stable, implement Milestone 6 next:
 
-> Route-to-action intent extraction with bounded per-route action scan.
+> Browser-backed route-to-action discovery with a canonical route worklist and bounded per-route safe-click exploration.
 
 After Milestone 6 is stable, implement Milestone 7 for workflow task generation.
 

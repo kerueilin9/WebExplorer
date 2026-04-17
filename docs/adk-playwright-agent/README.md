@@ -8,13 +8,13 @@ As of 2026-04-17, this document set describes the design and current implementat
 - optionally save authenticated browser state for reuse
 
 This package now lives inside the `adk_playwright_agent` implementation repo.
-Some pieces are implemented already, while the action-intent and ADK Skill
-packaging layers remain planned work.
+Some pieces are implemented already, while browser-backed action discovery,
+action task generation, and expanded Skill resources remain planned work.
 
 Current implementation status:
 
 - implemented: headed persistent `playwright-cli` adapter, guest/auth crawlers, manifest writer, context memory helpers, navigation task generator, validation helpers, manifest-first workflow tool, static action intent extractor, minimal ADK Skill package
-- planned: action workflow task generation, expanded ADK Skill resources and scripts, optional bounded browser-backed intent verification
+- planned: browser-backed action discovery, action workflow task generation, expanded ADK Skill resources and scripts
 - intentionally generic: SUT-specific behavior belongs in manifests, generated tasks, or optional profiles, not in crawler defaults
 
 ## Goal
@@ -31,7 +31,7 @@ Build an ADK-based agent that behaves like a lightweight browser QA assistant:
 The target output strategy is two-stage:
 
 1. Generate route coverage tasks (for example, `Navigate to Employees`) from discovered routes.
-2. Revisit discovered routes, infer page-level actions (for example, `Create Employee`), and generate workflow tasks.
+2. Revisit canonical discovered routes with `playwright-cli`, inspect the live UI, infer page-level actions from observed evidence, and generate workflow tasks.
 
 ## Recommended Stack
 
@@ -173,6 +173,7 @@ The first implementation should target one site at a time and one browser sessio
 - [Tool and State Design](./TOOLS_AND_STATE.md)
 - [Implementation Plan](./IMPLEMENTATION_PLAN.md)
 - [Multi-Step Web Crawler Plan](./MULTI_STEP_CRAWLER_PLAN.md)
+- [Browser-Backed Action Discovery](./BROWSER_BACKED_ACTION_DISCOVERY.md)
 
 ## Official ADK References
 

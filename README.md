@@ -224,10 +224,11 @@ The batch generator writes `task_*.json` files, preserves the manifest navigatio
 
 ## Action Intent Extraction
 
-Use `extract_action_intents_from_manifest` after a stable manifest exists. This
-first pass is static and read-only: it inspects route URL, label, headings,
-primary actions, and form metadata already captured in the manifest. It does not
-open a browser, click controls, or submit forms.
+The current `extract_action_intents_from_manifest` helper is a static prototype.
+The target design is browser-backed action discovery: build a canonical route
+worklist from a stable manifest, skip or fold query-string variants, open each
+canonical route with `playwright-cli`, inspect the live UI, and generate action
+tasks only from observed safe UI evidence.
 
 Example ADK prompt:
 
@@ -235,10 +236,12 @@ Example ADK prompt:
 Extract action intents from timeoff/route_manifest.auth.generic.json into timeoff/action_intents.auth.generic.json. Use site_name timeoff and skip high-risk actions.
 ```
 
-The extractor writes `action_intents.json` style metadata for read-only search,
-filter, and open intents plus create/edit entrypoints that require confirmation.
+The browser-backed phase should write per-route evidence plus
+`action_intents.json` style metadata. Query-string routes such as
+`/calendar/teamview?department=1&date=2026-03` should be folded into
+`/calendar/teamview` and not explored or generated as separate action tasks.
 High-risk candidates such as delete, import, upload, export, approve, and reject
-are skipped by default and reported in `skipped_candidates`.
+remain skipped by default and reported in `skipped_candidates`.
 
 ## Context Memory
 

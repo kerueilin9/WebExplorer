@@ -667,7 +667,7 @@ def _route_record(
         "depth": depth,
         "source_path": source_path,
         "navigation_steps": _build_navigation_steps(path, parents),
-        "assertions": _route_assertions(path, label),
+        "assertions": _route_assertions(path, label, page),
         "validation_mode": "url",
         "discovered_links": [link["path"] for link in discovered_links],
         "context": {
@@ -799,12 +799,25 @@ def _build_navigation_steps(
     return steps
 
 
-def _route_assertions(path: str, label: str) -> list[str]:
+def _route_assertions(path: str, label: str, page: PageSummary | None = None) -> list[str]:
     split_path = urlsplit(path)
     assertions = [f'The browser URL should include "{split_path.path or "/"}"']
-    if label:
-        assertions.append(f'The page title or primary heading should show "{label}"')
+    assertion_label = _route_assertion_label(label, page)
+    if assertion_label:
+        assertions.append(f'The page title or primary heading should show "{assertion_label}"')
     return assertions
+
+
+def _route_assertion_label(label: str, page: PageSummary | None) -> str:
+    if page:
+        heading = _first_meaningful_label(page.headings)
+        if heading:
+            return heading
+        if page.title:
+            title_label = page.title.split("|", 1)[0].strip()
+            if title_label and not _is_low_value_label(title_label):
+                return title_label
+    return _clean_text(label)
 
 
 def _route_label(

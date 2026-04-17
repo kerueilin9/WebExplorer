@@ -255,20 +255,41 @@ Returns:
 
 - `generated_files`
 
-### `discover_page_actions`
+### `build_action_discovery_worklist`
 
 Inputs:
 
 - `route_manifest`
+- `skip_query_variants: bool = true`
+
+Returns:
+
+- `worklist_path`
+- `canonical_route_count`
+- `folded_variant_count`
+
+### `discover_page_actions`
+
+Inputs:
+
+- `action_worklist`
 - `session_name`
 - `max_actions_per_route`
+- `max_safe_clicks_per_route`
 - `allowed_action_types`
 
 Returns:
 
 - `action_catalog_path`
+- `evidence_dir`
 - `intent_count`
 - `skipped_intents`
+
+Notes:
+
+- this tool or subflow must open each canonical route with `playwright-cli`
+- final action tasks must be based on live snapshot/DOM evidence, not static manifest scanning alone
+- query-string variants should be folded into their base path and skipped for separate action discovery by default
 
 ### `generate_action_tasks`
 
@@ -391,7 +412,12 @@ Example values:
 
 - `action.discovery_enabled`
 - `action.pending_route_ids`
+- `action.canonical_worklist_path`
+- `action.folded_query_variants`
+- `action.current_route_id`
+- `action.current_canonical_path`
 - `action.discovered_intents`
+- `action.evidence_dir`
 - `action.intent_catalog_path`
 - `action.generated_task_files`
 
@@ -459,6 +485,38 @@ Suggested shape:
     "The browser URL should include \"/projects/42\"",
     "The page title or primary heading should show \"Project Alpha\""
   ]
+}
+```
+
+## Browser-Backed Action Evidence Shape
+
+Each action-discovery route should produce an evidence record before final task
+generation.
+
+Suggested shape:
+
+```json
+{
+  "route_id": "timeoff_authenticated_page_calendar_teamview",
+  "canonical_path": "/calendar/teamview",
+  "selected_url": "http://localhost:3102/calendar/teamview",
+  "folded_variants": [
+    "/calendar/teamview?department=1&date=2026-03"
+  ],
+  "baseline": {
+    "title": "Team view | TimeOff",
+    "headings": ["Team view"],
+    "snapshot_path": "timeoff/action_discovery/snapshots/teamview__baseline.json"
+  },
+  "observed_controls": [
+    {"label": "Department", "kind": "filter", "safe": true},
+    {"label": "Export", "kind": "download", "safe": false}
+  ],
+  "safe_clicks": [],
+  "blocked_actions": [
+    {"label": "Export", "reason": "download_blocked"}
+  ],
+  "task_drafts": []
 }
 ```
 

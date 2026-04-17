@@ -13,6 +13,7 @@ from adk_playwright_agent.tools.crawler_tools import (
     _login_script,
     _manifest_write_destination,
     _normalize_candidate_link,
+    _route_assertions,
     _route_id,
     _route_label,
 )
@@ -129,6 +130,14 @@ def main() -> None:
         "I open the configured home page",
         'I click the "Project Alpha" link to reach "/projects/42"',
         'I click the "Record Details" link to reach "/records/1"',
+    ]
+    assert _route_assertions(
+        "/calendar/feeds",
+        "Feeds",
+        PageSummary(url=current_url, headings=["My feeds"], title="TimeOff"),
+    ) == [
+        'The browser URL should include "/calendar/feeds"',
+        'The page title or primary heading should show "My feeds"',
     ]
     assert "already_authenticated_redirect" in _login_script("demo", "secret")
 
