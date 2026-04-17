@@ -13,8 +13,8 @@ packaging layers remain planned work.
 
 Current implementation status:
 
-- implemented: headed persistent `playwright-cli` adapter, guest/auth crawlers, manifest writer, context memory helpers, navigation task generator, validation helpers
-- planned: page-action intent extraction, action workflow task generation, ADK Skill package for one-command operator workflows
+- implemented: headed persistent `playwright-cli` adapter, guest/auth crawlers, manifest writer, context memory helpers, navigation task generator, validation helpers, manifest-first workflow tool, static action intent extractor, minimal ADK Skill package
+- planned: action workflow task generation, expanded ADK Skill resources and scripts, optional bounded browser-backed intent verification
 - intentionally generic: SUT-specific behavior belongs in manifests, generated tasks, or optional profiles, not in crawler defaults
 
 ## Goal

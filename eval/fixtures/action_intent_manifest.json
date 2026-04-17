@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-04-17T00:00:00Z",
+  "start_url": "http://localhost:3102",
+  "base_origin": "http://localhost:3102",
+  "crawl_options": {
+    "phase": "authenticated",
+    "sut_profile": "generic",
+    "crawl_authenticated": true
+  },
+  "summary": {
+    "route_count": 3,
+    "visited_count": 3,
+    "pending_count": 0,
+    "skipped_count": 0,
+    "error_count": 0
+  },
+  "routes": [
+    {
+      "id": "sample_authenticated_users",
+      "label": "Employees",
+      "url": "http://localhost:3102/users",
+      "path": "/users",
+      "query": "",
+      "page_type": "section",
+      "phase": "authenticated",
+      "require_login": true,
+      "context": {
+        "headings": ["Employees"],
+        "primary_actions": ["Search", "Add employee", "Export employees"],
+        "forms": [
+          {
+            "tag": "input",
+            "type": "search",
+            "name": "q",
+            "placeholder": "Search employees",
+            "aria_label": "Search employees"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sample_authenticated_users_add",
+      "label": "Add employee",
+      "url": "http://localhost:3102/users/add",
+      "path": "/users/add",
+      "query": "",
+      "page_type": "create",
+      "phase": "authenticated",
+      "require_login": true,
+      "context": {
+        "headings": ["Add employee"],
+        "primary_actions": ["Create", "Cancel"],
+        "forms": [
+          {
+            "tag": "input",
+            "type": "text",
+            "name": "firstname",
+            "placeholder": "First name",
+            "aria_label": "First name"
+          },
+          {
+            "tag": "input",
+            "type": "email",
+            "name": "email",
+            "placeholder": "Email",
+            "aria_label": "Email"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sample_authenticated_users_delete",
+      "label": "Delete employee",
+      "url": "http://localhost:3102/users/delete/1",
+      "path": "/users/delete/1",
+      "query": "",
+      "page_type": "page",
+      "phase": "authenticated",
+      "require_login": true,
+      "context": {
+        "headings": ["Delete employee"],
+        "primary_actions": ["Delete"],
+        "forms": []
+      }
+    }
+  ],
+  "skipped_routes": [],
+  "errors": []
+}

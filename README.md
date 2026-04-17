@@ -47,6 +47,12 @@ Important settings:
 - `DEFAULT_CREDENTIALS_FILE`
 - `GOOGLE_API_KEY`
 
+Credentials lookup is recoverable and tries configured paths first, then falls
+back to `AGENT_WORKSPACE_ROOT/passwords.txt`, this project directory's
+`passwords.txt`, and the current working directory's `passwords.txt`. Missing
+files or missing system names are returned as tool errors instead of crashing the
+ADK process.
+
 ## Run With uv
 
 Interactive CLI:
@@ -85,6 +91,24 @@ Crawler manifest helper smoke test:
 uv run python scripts/crawler_manifest_smoke.py
 ```
 
+Manifest-first workflow smoke test:
+
+```powershell
+uv run python scripts/workflow_smoke.py
+```
+
+Credentials error handling smoke test:
+
+```powershell
+uv run python scripts/credentials_smoke.py
+```
+
+Action intent extraction smoke test:
+
+```powershell
+uv run python scripts/intent_smoke.py
+```
+
 Compare guest and authenticated manifests:
 
 ```powershell
@@ -103,6 +127,9 @@ just lint
 just manifest-test
 just context-test
 just crawler-test
+just workflow-test
+just credentials-test
+just intent-test
 ```
 
 ## ADK Entry Point
@@ -155,6 +182,34 @@ To compare two manifests:
 uv run python scripts/compare_manifests.py manifests/example_sut/route_manifest.guest.json manifests/example_sut/route_manifest.auth.json
 ```
 
+## Manifest-First Workflow Tool
+
+Use `run_manifest_first_route_workflow` when you want the full repeatable sequence:
+
+```text
+guest crawl -> guest task generation -> authenticated crawl -> auth task generation -> validation
+```
+
+Example ADK prompt:
+
+```text
+Run manifest-first route workflow for http://localhost:3102. Use site_name timeoff, credentials_system_name timeoff, output_root timeoff, storage_state_path .auth/timeoff_state.json, guest_max_depth 2, auth_max_depth 3, and max_pages 120.
+```
+
+The workflow writes separate guest/auth manifests and generated task directories under `output_root`, reports generated/skipped counts, and refuses task generation from manifests with pending or error counts.
+
+By default, the workflow discovers the login route from the guest manifest before
+starting the authenticated crawl. It looks for login/sign-in routes using URL,
+label, page type, headings, actions, and password-form evidence. Recovery routes
+such as forgot-password and reset-password are explicitly excluded. Pass
+`login_path` only when you need to override discovery.
+
+Authenticated crawling excludes session-ending routes such as logout, log out,
+signout, sign out, and sign-off. These routes are not coverage targets because
+visiting them destroys the authenticated session and reduces crawl coverage.
+
+The same workflow is also documented as an ADK Skill at [skills/manifest-first-route-workflow/SKILL.md](/D:/Ker/Desktop/Document/other/GUI_test/adk_playwright_agent/skills/manifest-first-route-workflow/SKILL.md).
+
 ## Task Generation
 
 Use `generate_tasks_from_manifest` after a manifest has `pending_count: 0` and `error_count: 0`.
@@ -166,6 +221,24 @@ Generate task JSON files from manifests/example_sut/route_manifest.auth.json int
 ```
 
 The batch generator writes `task_*.json` files, preserves the manifest navigation steps/assertions, and skips unsafe routes such as logout, delete, download, backup, export, upload, and routes with invalid query markers such as `NaN` or `undefined` unless explicitly requested.
+
+## Action Intent Extraction
+
+Use `extract_action_intents_from_manifest` after a stable manifest exists. This
+first pass is static and read-only: it inspects route URL, label, headings,
+primary actions, and form metadata already captured in the manifest. It does not
+open a browser, click controls, or submit forms.
+
+Example ADK prompt:
+
+```text
+Extract action intents from timeoff/route_manifest.auth.generic.json into timeoff/action_intents.auth.generic.json. Use site_name timeoff and skip high-risk actions.
+```
+
+The extractor writes `action_intents.json` style metadata for read-only search,
+filter, and open intents plus create/edit entrypoints that require confirmation.
+High-risk candidates such as delete, import, upload, export, approve, and reject
+are skipped by default and reported in `skipped_candidates`.
 
 ## Context Memory
 

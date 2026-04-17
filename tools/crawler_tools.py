@@ -11,14 +11,18 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
-from adk_playwright_agent.adapters.credentials import load_named_credentials
+from adk_playwright_agent.adapters.credentials import CredentialsError, load_named_credentials
 from adk_playwright_agent.adapters.playwright_cli import PlaywrightCliAdapter
 from adk_playwright_agent.app.context_memory import (
     CredentialReference,
     CrawlerContext,
     PageSummary,
 )
-from adk_playwright_agent.app.policies import DANGEROUS_UI_KEYWORDS, resolve_workspace_path
+from adk_playwright_agent.app.policies import (
+    DANGEROUS_UI_KEYWORDS,
+    is_session_ending_ui_label,
+    resolve_workspace_path,
+)
 
 _ADAPTER = PlaywrightCliAdapter()
 
@@ -378,19 +382,23 @@ def _perform_login(
     context: CrawlerContext,
 ) -> dict[str, Any]:
     source = credentials_path or os.getenv("DEFAULT_CREDENTIALS_FILE")
-    if not source:
+
+    try:
+        credentials = load_named_credentials(source, credentials_system_name)
+    except CredentialsError as exc:
         return {
             "ok": False,
-            "reason": "missing_credentials_path",
-            "message": "No credentials path provided and DEFAULT_CREDENTIALS_FILE is not set.",
+            "reason": "credentials_unavailable",
+            "message": str(exc),
+            "credentials_system_name": credentials_system_name,
         }
 
-    credentials = load_named_credentials(source, credentials_system_name)
+    resolved_source = credentials.get("source") or source
     context.long_term_memory.remember_credentials(
         CredentialReference(
             system_name=credentials_system_name,
             username=credentials.get("username"),
-            credentials_source=source,
+            credentials_source=resolved_source,
             storage_state_path=storage_state_path,
             verified_at=_utc_now(),
         )
@@ -612,7 +620,7 @@ def _normalize_candidate_link(
     query = _strip_tracking_query(parsed.query)
     path_with_query = _path_with_query_from_values(path, query)
     lowered_route = f"{path_with_query} {text}".lower()
-    if "logout" in lowered_route:
+    if is_session_ending_ui_label(lowered_route):
         return None
     if any(keyword in lowered_route for keyword in DANGEROUS_UI_KEYWORDS):
         return None
@@ -665,6 +673,7 @@ def _route_record(
         "context": {
             "headings": page.headings[:10],
             "primary_actions": page.primary_actions[:10],
+            "forms": page.forms[:10],
             "snapshot_artifact": page.snapshot_artifact,
         },
     }

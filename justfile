@@ -23,3 +23,12 @@ context-test:
 
 crawler-test:
     uv run python scripts/crawler_manifest_smoke.py
+
+workflow-test:
+    uv run python scripts/workflow_smoke.py
+
+credentials-test:
+    uv run python scripts/credentials_smoke.py
+
+intent-test:
+    uv run python scripts/intent_smoke.py

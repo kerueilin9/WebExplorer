@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 
-from adk_playwright_agent.adapters.credentials import load_named_credentials
+from adk_playwright_agent.adapters.credentials import CredentialsError, load_named_credentials
 from adk_playwright_agent.adapters.playwright_cli import PlaywrightCliAdapter
 
 _ADAPTER = PlaywrightCliAdapter()
@@ -144,9 +144,18 @@ def login_from_notes(
 
     source = credentials_path or os.getenv("DEFAULT_CREDENTIALS_FILE")
     if not source:
-        raise ValueError("No credentials path provided and DEFAULT_CREDENTIALS_FILE is not set.")
+        source = None
 
-    credentials = load_named_credentials(source, system_name)
+    try:
+        credentials = load_named_credentials(source, system_name)
+    except CredentialsError as exc:
+        return {
+            "ok": False,
+            "reason": "credentials_unavailable",
+            "message": str(exc),
+            "system_name": system_name,
+        }
+
     _ADAPTER.fill(
         session_name=session_name,
         target=username_target,
@@ -161,7 +170,7 @@ def login_from_notes(
     )
     click_result = _ADAPTER.click(session_name=session_name, target=submit_button_target)
     payload = click_result.to_tool_result()
-    payload["credential_source"] = source
+    payload["credential_source"] = credentials.get("source") or source
     payload["username"] = credentials["username"]
     payload["system_name"] = system_name
     return payload

@@ -62,6 +62,7 @@ The first version should avoid:
 
 - destructive UI actions
 - form submission except login
+- logout/signout/sign-off navigation during authenticated crawling
 - creating data unless explicitly requested
 - crawling external domains
 - unlimited crawling
@@ -391,12 +392,14 @@ Do not overwrite the guest manifest until the diff between guest and authenticat
 
 Steps:
 
-1. Navigate to login route.
-2. Fill credentials from configured notes file.
-3. Submit login.
-4. Save storage state.
-5. Restart or continue crawl as signed-in user.
-6. Record member-only routes.
+1. Discover the login route from the guest manifest unless an explicit
+   `login_path` override is provided.
+2. Navigate to the discovered login route.
+3. Fill credentials from configured notes file.
+4. Submit login.
+5. Save storage state.
+6. Restart or continue crawl as signed-in user.
+7. Record member-only routes.
 
 Expected output:
 
@@ -655,6 +658,7 @@ Default safe actions:
 - filling login forms
 - saving storage state
 - reading page DOM
+- skipping logout/signout/sign-off links to preserve authenticated coverage
 
 Default unsafe actions:
 

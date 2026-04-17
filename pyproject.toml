@@ -30,6 +30,7 @@ packages = [
 [tool.setuptools.package-data]
 adk_playwright_agent = [
   "docs/adk-playwright-agent/*.md",
+  "skills/*/SKILL.md",
   "templates/*.json",
   "templates/*.ts",
   "eval/criteria/*.md",

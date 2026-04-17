@@ -8,6 +8,7 @@ import re
 from typing import Any
 
 from adk_playwright_agent.app.policies import DANGEROUS_UI_KEYWORDS
+from adk_playwright_agent.app.policies import is_session_ending_ui_label
 from adk_playwright_agent.app.policies import resolve_workspace_path
 
 _UNSAFE_ROUTE_KEYWORDS = DANGEROUS_UI_KEYWORDS | {
@@ -284,7 +285,9 @@ def _route_looks_unsafe(route: dict[str, Any]) -> bool:
     haystack = " ".join(
         str(route.get(key) or "") for key in ("label", "path", "query", "url")
     ).lower()
-    return any(keyword in haystack for keyword in _UNSAFE_ROUTE_KEYWORDS)
+    return is_session_ending_ui_label(haystack) or any(
+        keyword in haystack for keyword in _UNSAFE_ROUTE_KEYWORDS
+    )
 
 
 def _route_has_invalid_query(route: dict[str, Any]) -> bool:

@@ -33,10 +33,12 @@ from adk_playwright_agent.tools.generator_tools import (
     generate_tasks_from_manifest,
     write_route_manifest,
 )
+from adk_playwright_agent.tools.intent_tools import extract_action_intents_from_manifest
 from adk_playwright_agent.tools.validation_tools import (
     validate_task_directory,
     validate_task_file,
 )
+from adk_playwright_agent.tools.workflow_tools import run_manifest_first_route_workflow
 from adk_playwright_agent.tools.workspace_tools import (
     list_files,
     read_text_file,
@@ -45,13 +47,32 @@ from adk_playwright_agent.tools.workspace_tools import (
 
 try:
     from google.adk.agents import Agent
+    from google.adk.skills import load_skill_from_dir
+    from google.adk.tools import skill_toolset
     from google.adk.tools.function_tool import FunctionTool
 except ImportError as exc:  # pragma: no cover - import guard for scaffolding
     Agent = None
     FunctionTool = None
+    load_skill_from_dir = None
+    skill_toolset = None
     _ADK_IMPORT_ERROR = exc
 else:
     _ADK_IMPORT_ERROR = None
+
+
+def _load_skill_toolsets():
+    if load_skill_from_dir is None or skill_toolset is None:
+        return []
+
+    skill_dir = Path(__file__).with_name("skills") / "manifest-first-route-workflow"
+    if not skill_dir.exists():
+        return []
+
+    return [
+        skill_toolset.SkillToolset(
+            skills=[load_skill_from_dir(skill_dir)],
+        )
+    ]
 
 
 def _build_root_agent():
@@ -61,6 +82,7 @@ def _build_root_agent():
         ) from _ADK_IMPORT_ERROR
 
     model_name = os.getenv("ADK_MODEL", "gemini-2.5-flash")
+    skill_toolsets = _load_skill_toolsets()
 
     return Agent(
         name="playwright_test_author",
@@ -88,8 +110,11 @@ def _build_root_agent():
             FunctionTool(write_route_manifest),
             FunctionTool(generate_task_file, require_confirmation=True),
             FunctionTool(generate_tasks_from_manifest),
+            FunctionTool(extract_action_intents_from_manifest),
             FunctionTool(validate_task_file),
             FunctionTool(validate_task_directory),
+            FunctionTool(run_manifest_first_route_workflow),
+            *skill_toolsets,
         ],
     )
 

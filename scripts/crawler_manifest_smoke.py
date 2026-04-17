@@ -57,6 +57,14 @@ def main() -> None:
         include_patterns=[],
         exclude_patterns=[],
     )
+    signout = _normalize_candidate_link(
+        raw_link={"text": "Sign Out", "href": "/keystone/signout"},
+        current_url=current_url,
+        base_origin=base_origin,
+        same_origin_only=True,
+        include_patterns=[],
+        exclude_patterns=[],
+    )
     trailing_slash = _normalize_candidate_link(
         raw_link={"text": "Record Details", "href": "/records/1/"},
         current_url=current_url,
@@ -82,6 +90,7 @@ def main() -> None:
     assert external is None
     assert destructive is None
     assert rss is None
+    assert signout is None
     assert trailing_slash is not None
     assert trailing_slash["path"] == "/records/1"
     assert _classify_page_type("/projects/42") == "detail"
@@ -139,6 +148,7 @@ def main() -> None:
                 "accepted_path": accepted["path"],
                 "external_skipped": external is None,
                 "destructive_skipped": destructive is None,
+                "signout_skipped": signout is None,
                 "rss_skipped": rss is None,
                 "navigation_step_count": len(steps),
             },

@@ -16,6 +16,18 @@ DANGEROUS_UI_KEYWORDS = {
     "rebuild",
 }
 
+SESSION_ENDING_UI_KEYWORDS = {
+    "log out",
+    "log-out",
+    "logout",
+    "sign out",
+    "sign-out",
+    "signoff",
+    "sign off",
+    "sign-off",
+    "signout",
+}
+
 
 def workspace_root() -> Path:
     """Return the configured workspace root."""
@@ -46,3 +58,15 @@ def is_destructive_ui_label(label: str) -> bool:
 
     normalized = label.strip().lower()
     return any(keyword in normalized for keyword in DANGEROUS_UI_KEYWORDS)
+
+
+def is_session_ending_ui_label(label: str) -> bool:
+    """Return true if a UI action appears to end the signed-in session."""
+
+    normalized = label.strip().lower()
+    compact = normalized.replace(" ", "").replace("-", "").replace("_", "")
+    return any(keyword in normalized for keyword in SESSION_ENDING_UI_KEYWORDS) or compact in {
+        "logout",
+        "signout",
+        "signoff",
+    }
