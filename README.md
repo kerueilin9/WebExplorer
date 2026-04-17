@@ -18,6 +18,7 @@ adk_playwright_agent/
   app/
   tools/
   adapters/
+  docs/
   templates/
   eval/
   pyproject.toml
@@ -29,6 +30,10 @@ adk_playwright_agent/
 cd D:\Ker\Desktop\Document\other\GUI_test\adk_playwright_agent
 uv sync
 ```
+
+This project tracks the stable ADK 1.x line with `google-adk>=1.31.0,<2.0`.
+ADK 2.0 is currently documented upstream as Alpha / pre-GA, so it is not used
+by default unless the project explicitly opts into a migration branch.
 
 ## Configuration
 
@@ -116,6 +121,13 @@ It exposes:
 - Generator tools
 - Validation tools
 - Crawler tools
+
+## Project Design Docs
+
+The design and implementation planning documents live under
+[docs/adk-playwright-agent](/D:/Ker/Desktop/Document/other/GUI_test/adk_playwright_agent/docs/adk-playwright-agent).
+They are kept inside this repository so code, tool schemas, and operator
+workflow documentation can evolve together.
 
 ## Guest Crawl Tool
 
