@@ -124,6 +124,23 @@ def main() -> None:
                 "The absence request should be visible or a confirmation should be shown.",
                 "The workflow should not show validation errors for valid input.",
             ]
+        elif intent["label"] == "Add employee" and intent.get("entry_path") == "/users/add":
+            decision["workflow_steps"] = [
+                'I open the "Add employee" create workflow.',
+                'I fill "First Name" with "Smoke".',
+                'I fill "Last Name" with "User".',
+                'I fill "Email Address" with "smoke.user@example.test".',
+                'I submit the employee form.',
+            ]
+            decision["test_data"] = {
+                "First Name": "Smoke",
+                "Last Name": "User",
+                "Email Address": "smoke.user@example.test",
+            }
+            decision["commit_policy"] = "Submit is allowed because this reviewed create workflow is intended to create disposable test data."
+            decision["success_evidence"] = [
+                "The employee should be created or a confirmation should be visible.",
+            ]
         review_decisions.append(decision)
     review_decisions.append(
         {
@@ -221,6 +238,13 @@ def main() -> None:
         reviewed_intents_json=json.dumps({"reviewed_intents": review_decisions}),
         clear_existing=True,
     )
+    workflow_missing_packets = run_action_review_task_workflow(
+        intents_path="adk_playwright_agent/.adk/missing_action_intents.json",
+        output_root="adk_playwright_agent/.adk/action_workflow_missing_packets",
+        site_name="sample",
+        storage_state_path=".auth/sample_state.json",
+        clear_existing=True,
+    )
 
     assert workflow_pending["ok"] is True
     assert workflow_pending["summary"]["needs_review"] is True
@@ -230,6 +254,8 @@ def main() -> None:
     assert workflow_completed["summary"]["reviewed_intent_count"] == 5
     assert workflow_completed["summary"]["action_generated_count"] == 4
     assert workflow_completed["summary"]["action_valid_files"] == 4
+    assert workflow_missing_packets["ok"] is False
+    assert workflow_missing_packets["issues"][0]["phase"] == "review_packets"
 
 
 class _FakeActionDiscoveryAdapter:

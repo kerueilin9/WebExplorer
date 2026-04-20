@@ -12,6 +12,8 @@ generate page-action task files. Keep the workflow generic across SUTs.
 ## Required Inputs
 
 - `intents_path`: a browser-backed `action_intents.browser*.json` file.
+  If unavailable, create it first using `build_action_discovery_worklist` and
+  `discover_page_actions_from_worklist`.
 
 ## Optional Inputs
 
@@ -19,32 +21,49 @@ generate page-action task files. Keep the workflow generic across SUTs.
 - `output_root`: where review packets, reviewed intents, and action task folders are written.
 - `storage_state_path`: authenticated browser state used by generated tasks.
 - `start_url`: expected task start URL. Omit it when the intents file references a worklist with start URL.
+- `manifest_path`: route manifest used to bootstrap browser-backed action discovery.
+- `worklist_path`: optional explicit path for action discovery worklist output.
+- `action_intents_output_path`: optional explicit path for browser-backed action intents output.
 - `reviewed_intents_json`: LLM review decisions for accepted/rejected/updated existing intent ids.
 - `reviewed_intents_path`: existing reviewed intents file to use for task generation.
 - `task_id_prefix`, `max_tasks`, and packet size limits.
 
 ## Execution Rules
 
-1. Call `run_action_review_task_workflow` instead of manually chaining packet
-   generation, reviewed-intent writing, action-task generation, and validation.
-2. If no `reviewed_intents_json` or `reviewed_intents_path` is available, keep
+1. If `intents_path` does not exist or is stale, run upstream discovery first:
+  - call `build_action_discovery_worklist` from a route manifest
+  - call `discover_page_actions_from_worklist` from that worklist
+  - continue with the produced browser-backed `action_intents.browser*.json`
+2. Call `run_action_review_task_workflow` instead of manually chaining packet
+  generation, reviewed-intent writing, action-task generation, and validation.
+3. If no `reviewed_intents_json` or `reviewed_intents_path` is available, keep
    `require_review=true`; the workflow should stop after review packet creation.
-3. Review packets as a generic SUT reviewer. Do not assume product-specific
+4. Review packets as a generic SUT reviewer. Do not assume product-specific
    routes, labels, roles, or admin paths.
-4. During review, only accept, reject, rename, or reclassify existing
+5. During review, only accept, reject, rename, or reclassify existing
    `intent_id` values from the packet. Do not invent controls, routes, fields,
    or assertions.
-5. Prefer visible headings, form labels, control labels, and observed browser
+6. Prefer visible headings, form labels, control labels, and observed browser
    evidence over URL tokens.
-6. Reject low-value actions such as numeric-only labels, raw path labels, and
+7. Reject low-value actions such as numeric-only labels, raw path labels, and
    generic personal links.
-7. For create/edit workflows, decide whether the task should be conservative or
-   executable. If the user wants real tasks and the evidence shows enough fields
-   and a safe submit/save control, provide `workflow_steps`, `test_data`,
-   `success_evidence`, and `commit_policy` in the reviewed intent decision.
-   Otherwise keep the conservative default that opens the workflow and stops
-   before committing changes.
-8. Validate generated action task files before reporting completion.
+8. For create/edit workflows, provide executable reviewed fields when the
+  evidence shows enough fields and a safe submit/save control. Include
+  `workflow_steps`, `test_data`, `success_evidence`, and `commit_policy` in the
+  reviewed intent decision. Create/edit intents missing reviewed workflow fields
+  are skipped instead of generated as partial placeholder tasks.
+9. Validate generated action task files before reporting completion.
+
+## Upstream Discovery Sequence
+
+Use this sequence when browser-backed intents are not ready yet:
+
+1. Build canonical action discovery worklist from route manifest:
+  - `build_action_discovery_worklist(manifest_path, output_path, site_name, ...)`
+2. Discover browser-backed action evidence and intents from that worklist:
+  - `discover_page_actions_from_worklist(worklist_path, output_path, evidence_dir, site_name, storage_state_path, ...)`
+3. Use the produced `action_intents.browser*.json` as `intents_path` for
+  `run_action_review_task_workflow`.
 
 ## Reviewed Intent Shape
 
@@ -82,6 +101,9 @@ destructive, session-ending, payment, import/export, or irreversible operations.
 
 ## Safe Defaults
 
+- action worklist file: `action_worklist.generic.json`
+- browser intents file: `action_intents.browser.generic.json`
+- action discovery evidence dir: `action_discovery`
 - review packet dir: `action_review_packets`
 - reviewed intents file: `action_intents.reviewed.generic.json`
 - action task dir: `generated_tasks/actions`
@@ -91,6 +113,10 @@ destructive, session-ending, payment, import/export, or irreversible operations.
 ## Example
 
 ```text
+Build action discovery worklist from timeoff/route_manifest.auth.generic.json into timeoff/action_worklist.auth.generic.json.
+
+Run browser-backed action discovery from timeoff/action_worklist.auth.generic.json into timeoff/action_intents.browser.auth.generic.json. Write evidence under timeoff/action_discovery.
+
 Run the action-review-task-workflow skill for timeoff/action_intents.browser.auth.generic.json.
 Use site_name timeoff, output_root timeoff, and storage_state_path .auth/timeoff_state.json.
 First create review packets and stop for review.

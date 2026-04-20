@@ -96,9 +96,38 @@ def generate_tasks_from_manifest(
 
     manifest_file = resolve_workspace_path(manifest_path)
     destination_dir = resolve_workspace_path(output_dir)
+
+    if not manifest_file.exists() or not manifest_file.is_file():
+        return {
+            "ok": False,
+            "error": "file_not_found",
+            "message": f"File not found: {manifest_file}",
+            "manifest_path": str(manifest_file),
+            "output_dir": str(destination_dir),
+            "site_name": site_name,
+            "generated_count": 0,
+            "skipped_count": 0,
+            "generated": [],
+            "skipped": [],
+        }
+
     destination_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_json",
+            "message": f"Invalid JSON in '{manifest_file}': {exc}",
+            "manifest_path": str(manifest_file),
+            "output_dir": str(destination_dir),
+            "site_name": site_name,
+            "generated_count": 0,
+            "skipped_count": 0,
+            "generated": [],
+            "skipped": [],
+        }
     routes = manifest.get("routes", [])
     if not isinstance(routes, list):
         raise ValueError("manifest routes must be a JSON array.")
@@ -210,15 +239,40 @@ def generate_action_tasks_from_intents(
     clear_existing: bool = False,
     max_tasks: int | None = None,
 ) -> dict[str, Any]:
-    """Generate action workflow task JSON files from browser-backed action intents."""
+    """Generate complete action workflow task JSON files from reviewed action intents."""
 
     intents_file = resolve_workspace_path(intents_path)
     destination_dir = resolve_workspace_path(output_dir)
-    destination_dir.mkdir(parents=True, exist_ok=True)
-    if clear_existing:
-        _remove_existing_task_files(destination_dir)
 
-    payload = json.loads(intents_file.read_text(encoding="utf-8"))
+    if not intents_file.exists() or not intents_file.is_file():
+        return {
+            "ok": False,
+            "error": "file_not_found",
+            "message": f"File not found: {intents_file}",
+            "intents_path": str(intents_file),
+            "output_dir": str(destination_dir),
+            "site_name": site_name or "webapp",
+            "generated_count": 0,
+            "skipped_count": 0,
+            "generated": [],
+            "skipped": [],
+        }
+
+    try:
+        payload = json.loads(intents_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_json",
+            "message": f"Invalid JSON in '{intents_file}': {exc}",
+            "intents_path": str(intents_file),
+            "output_dir": str(destination_dir),
+            "site_name": site_name or "webapp",
+            "generated_count": 0,
+            "skipped_count": 0,
+            "generated": [],
+            "skipped": [],
+        }
     intents = payload.get("intents", [])
     if not isinstance(intents, list):
         raise ValueError("intents must be a JSON array.")
@@ -228,6 +282,10 @@ def generate_action_tasks_from_intents(
     inferred_start_url = start_url or str(worklist.get("start_url") or worklist.get("base_origin") or "")
     if not inferred_start_url:
         raise ValueError("start_url is required when the action intent file does not reference a worklist with start_url.")
+
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    if clear_existing:
+        _remove_existing_task_files(destination_dir)
 
     include_types = set(_split_patterns(include_intent_types))
     exclude_types = set(_split_patterns(exclude_intent_types))
@@ -255,6 +313,16 @@ def generate_action_tasks_from_intents(
         if skip_reason:
             skipped.append(_skipped_action_intent(intent, skip_reason))
             continue
+
+        intent_type = str(intent.get("intent_type") or "")
+        if intent_type in {"create", "edit"}:
+            reviewed_steps = _reviewed_workflow_steps_base(intent)
+            if not reviewed_steps:
+                skipped.append(_skipped_action_intent(intent, "missing_reviewed_workflow_steps"))
+                continue
+            if not _reviewed_commit_policy(intent):
+                skipped.append(_skipped_action_intent(intent, "missing_commit_policy"))
+                continue
 
         if max_tasks is not None and len(generated) >= max_tasks:
             skipped.append(_skipped_action_intent(intent, "max_tasks_reached"))
@@ -440,11 +508,6 @@ def _action_steps(intent: dict[str, Any]) -> list[str]:
             field_label = fields[0] if fields else label
             return [f'I apply or inspect the "{field_label}" filter.']
         return [f'I use the "{label}" filter control.']
-    if intent_type in {"create", "edit"}:
-        return [
-            f'I open the "{label}" {intent_type} workflow.',
-            "I stop before submitting, saving, or otherwise committing changes.",
-        ]
     if intent_type == "open":
         return [f'I open the "{label}" UI.']
     return [f'I use the "{label}" action.']
@@ -463,13 +526,6 @@ def _action_assertions(intent: dict[str, Any], route: dict[str, Any]) -> list[st
     if intent_type in {"search", "filter"}:
         success = [str(value) for value in intent.get("success_evidence", []) if str(value).strip()]
         assertions.extend(success or ["The page should show matching results or a stable filtered state."])
-    elif intent_type in {"create", "edit"}:
-        assertions.extend(
-            [
-                f'The "{label}" workflow entrypoint or form should be visible.',
-                "No submit, save, delete, approve, reject, import, upload, or signout action should be completed.",
-            ]
-        )
     elif intent_type == "open":
         assertions.append(f'The "{label}" UI should become visible.')
     else:
@@ -489,17 +545,27 @@ def _action_scenario(intent: dict[str, Any]) -> str:
 
 
 def _reviewed_workflow_steps(intent: dict[str, Any]) -> list[str]:
+    steps = _reviewed_workflow_steps_base(intent)
+    if not steps:
+        return []
+    policy = _reviewed_commit_policy(intent)
+    if policy:
+        steps.append(f"Commit policy: {policy.rstrip('.')}.")
+    return steps
+
+
+def _reviewed_workflow_steps_base(intent: dict[str, Any]) -> list[str]:
     review = intent.get("review", {}) if isinstance(intent.get("review"), dict) else {}
     raw_steps = review.get("workflow_steps") or intent.get("workflow_steps")
     if not isinstance(raw_steps, list):
         return []
     steps = [str(step).strip() for step in raw_steps if str(step).strip()]
-    if not steps:
-        return []
-    policy = str(review.get("commit_policy") or intent.get("commit_policy") or "").strip()
-    if policy:
-        steps.append(f"Commit policy: {policy.rstrip('.')}.")
     return steps
+
+
+def _reviewed_commit_policy(intent: dict[str, Any]) -> str:
+    review = intent.get("review", {}) if isinstance(intent.get("review"), dict) else {}
+    return str(review.get("commit_policy") or intent.get("commit_policy") or "").strip()
 
 
 def _reviewed_success_evidence(intent: dict[str, Any]) -> list[str]:
@@ -601,9 +667,12 @@ def _load_action_worklist(payload: dict[str, Any]) -> dict[str, Any]:
         worklist_file = resolve_workspace_path(raw_path)
     except ValueError:
         return {}
-    if not worklist_file.exists():
+    if not worklist_file.exists() or not worklist_file.is_file():
         return {}
-    decoded = json.loads(worklist_file.read_text(encoding="utf-8"))
+    try:
+        decoded = json.loads(worklist_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
     return decoded if isinstance(decoded, dict) else {}
 
 

@@ -157,7 +157,7 @@ Implemented baseline behavior:
 - Authenticated routes that land on a login page are skipped as `auth_redirect_detected` instead of producing false guest-page intents.
 - `prepare_action_intent_review_packets` creates route-scoped evidence packets for LLM semantic review.
 - `write_reviewed_action_intents` writes constrained LLM review decisions back to an intent file without allowing invented intent IDs.
-- `generate_action_tasks_from_intents` converts accepted browser-backed intents into action tasks. Without reviewed workflow steps it keeps create/edit conservative; with reviewed `workflow_steps` and `commit_policy` it can generate executable form-fill/submit tasks.
+- `generate_action_tasks_from_intents` converts accepted browser-backed intents into complete action tasks. Create/edit intents without reviewed `workflow_steps` and `commit_policy` are skipped; with those reviewed fields it generates executable form-fill/submit tasks.
 - Action task generation skips low-value labels and controls already covered by a target route intent.
 
 Hard stop conditions:
@@ -226,11 +226,11 @@ Recommended artifacts:
 - evidence snapshot paths
 
 Task files should reference only workflows that were actually observed through
-browser exploration. For create/edit workflows, the default generation baseline
-opens the workflow entrypoint and stops before commit actions. A reviewed intent
-may opt into executable task generation by providing `workflow_steps`,
-`test_data`, `success_evidence`, and `commit_policy`, all grounded in the packet
-evidence.
+browser exploration. Create/edit action tasks require reviewed executable
+workflow fields; incomplete reviewed intents are skipped instead of converted
+into partial placeholder tasks. A reviewed intent can opt into executable task
+generation by providing `workflow_steps`, `test_data`, `success_evidence`, and
+`commit_policy`, all grounded in the packet evidence.
 
 ## Task Authoring Rules
 

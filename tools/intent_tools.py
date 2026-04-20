@@ -97,9 +97,36 @@ def build_action_discovery_worklist(
 
     manifest_file = resolve_workspace_path(manifest_path)
     destination = resolve_workspace_path(output_path)
+
+    if not manifest_file.exists() or not manifest_file.is_file():
+        return {
+            "ok": False,
+            "error": "file_not_found",
+            "message": f"File not found: {manifest_file}",
+            "manifest_path": str(manifest_file),
+            "output_path": str(destination),
+            "site_name": _slug(site_name or "webapp"),
+            "canonical_route_count": 0,
+            "folded_variant_count": 0,
+            "skipped_count": 0,
+        }
+
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_json",
+            "message": f"Invalid JSON in '{manifest_file}': {exc}",
+            "manifest_path": str(manifest_file),
+            "output_path": str(destination),
+            "site_name": _slug(site_name or "webapp"),
+            "canonical_route_count": 0,
+            "folded_variant_count": 0,
+            "skipped_count": 0,
+        }
     routes = manifest.get("routes", [])
     if not isinstance(routes, list):
         raise ValueError("manifest routes must be a JSON array.")
@@ -252,12 +279,34 @@ def discover_page_actions_from_worklist(
     """Open canonical routes and write browser-observed action evidence."""
 
     worklist_file = resolve_workspace_path(worklist_path)
-    worklist = json.loads(worklist_file.read_text(encoding="utf-8"))
+    destination = resolve_workspace_path(output_path)
+
+    if not worklist_file.exists() or not worklist_file.is_file():
+        return {
+            "ok": False,
+            "error": "file_not_found",
+            "reason": "file_not_found",
+            "message": f"File not found: {worklist_file}",
+            "worklist_path": str(worklist_file),
+            "output_path": str(destination),
+        }
+
+    try:
+        worklist = json.loads(worklist_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_json",
+            "reason": "invalid_json",
+            "message": f"Invalid JSON in '{worklist_file}': {exc}",
+            "worklist_path": str(worklist_file),
+            "output_path": str(destination),
+        }
+
     routes = worklist.get("routes", [])
     if not isinstance(routes, list):
         raise ValueError("worklist routes must be a JSON array.")
 
-    destination = resolve_workspace_path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     evidence_root = resolve_workspace_path(
         evidence_dir or str(destination.parent / "action_discovery")
@@ -441,13 +490,38 @@ def prepare_action_intent_review_packets(
 
     intents_file = resolve_workspace_path(intents_path)
     destination_dir = resolve_workspace_path(output_dir)
+
+    if not intents_file.exists() or not intents_file.is_file():
+        return {
+            "ok": False,
+            "error": "file_not_found",
+            "message": f"File not found: {intents_file}",
+            "intents_path": str(intents_file),
+            "output_dir": str(destination_dir),
+            "index_path": str(destination_dir / "review_index.json"),
+            "packet_count": 0,
+            "candidate_count": 0,
+        }
+
     destination_dir.mkdir(parents=True, exist_ok=True)
     if clear_existing:
         for old_packet in destination_dir.glob("packet_*.json"):
             if old_packet.is_file():
                 old_packet.unlink()
 
-    payload = json.loads(intents_file.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(intents_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_json",
+            "message": f"Invalid JSON in '{intents_file}': {exc}",
+            "intents_path": str(intents_file),
+            "output_dir": str(destination_dir),
+            "index_path": str(destination_dir / "review_index.json"),
+            "packet_count": 0,
+            "candidate_count": 0,
+        }
     intents = payload.get("intents", [])
     if not isinstance(intents, list):
         raise ValueError("intents must be a JSON array.")
@@ -559,9 +633,34 @@ def write_reviewed_action_intents(
 
     source_file = resolve_workspace_path(source_intents_path)
     destination = resolve_workspace_path(output_path)
+
+    if not source_file.exists() or not source_file.is_file():
+        return {
+            "ok": False,
+            "error": "file_not_found",
+            "message": f"File not found: {source_file}",
+            "source_intents_path": str(source_file),
+            "output_path": str(destination),
+            "reviewed_intent_count": 0,
+            "skipped_count": 0,
+            "by_type": {},
+        }
+
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    source_payload = json.loads(source_file.read_text(encoding="utf-8"))
+    try:
+        source_payload = json.loads(source_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_json",
+            "message": f"Invalid JSON in '{source_file}': {exc}",
+            "source_intents_path": str(source_file),
+            "output_path": str(destination),
+            "reviewed_intent_count": 0,
+            "skipped_count": 0,
+            "by_type": {},
+        }
     source_intents = source_payload.get("intents", [])
     if not isinstance(source_intents, list):
         raise ValueError("source intents must be a JSON array.")
@@ -571,7 +670,20 @@ def write_reviewed_action_intents(
         if isinstance(intent, dict) and intent.get("intent_id")
     }
 
-    review_items = _decode_review_items(reviewed_intents_json)
+    try:
+        review_items = _decode_review_items(reviewed_intents_json)
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        return {
+            "ok": False,
+            "error": "invalid_reviewed_intents_json",
+            "message": f"Invalid reviewed_intents_json: {exc}",
+            "source_intents_path": str(source_file),
+            "output_path": str(destination),
+            "reviewed_intent_count": 0,
+            "skipped_count": 0,
+            "by_type": {},
+        }
+
     reviewed: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -665,9 +777,38 @@ def extract_action_intents_from_manifest(
 
     manifest_file = resolve_workspace_path(manifest_path)
     destination = resolve_workspace_path(output_path)
+
+    if not manifest_file.exists() or not manifest_file.is_file():
+        return {
+            "ok": False,
+            "error": "file_not_found",
+            "message": f"File not found: {manifest_file}",
+            "manifest_path": str(manifest_file),
+            "output_path": str(destination),
+            "site_name": _slug(site_name or "webapp"),
+            "intent_count": 0,
+            "skipped_count": 0,
+            "duplicate_count": 0,
+            "by_type": {},
+        }
+
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_json",
+            "message": f"Invalid JSON in '{manifest_file}': {exc}",
+            "manifest_path": str(manifest_file),
+            "output_path": str(destination),
+            "site_name": _slug(site_name or "webapp"),
+            "intent_count": 0,
+            "skipped_count": 0,
+            "duplicate_count": 0,
+            "by_type": {},
+        }
     routes = manifest.get("routes", [])
     if not isinstance(routes, list):
         raise ValueError("manifest routes must be a JSON array.")
@@ -1209,9 +1350,12 @@ def _load_evidence_for_intent(intent: dict[str, Any]) -> dict[str, Any]:
         evidence_file = resolve_workspace_path(evidence_path)
     except ValueError:
         return {}
-    if not evidence_file.exists():
+    if not evidence_file.exists() or not evidence_file.is_file():
         return {}
-    decoded = json.loads(evidence_file.read_text(encoding="utf-8"))
+    try:
+        decoded = json.loads(evidence_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
     return decoded if isinstance(decoded, dict) else {}
 
 

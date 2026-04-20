@@ -302,6 +302,14 @@ def run_action_review_task_workflow(
     )
     result["phases"]["review_packets"] = review_packets
     result["summary"]["review_packet_count"] = int(review_packets.get("packet_count") or 0)
+    if review_packets.get("ok") is False:
+        result["issues"].append(
+            {
+                "phase": "review_packets",
+                "type": str(review_packets.get("error") or "review_packets_failed"),
+                "message": str(review_packets.get("message") or "Failed to prepare review packets."),
+            }
+        )
 
     task_source_path = str(source_intents)
     if reviewed_intents_json:
@@ -313,7 +321,16 @@ def run_action_review_task_workflow(
         )
         result["phases"]["reviewed_intents"] = reviewed
         result["summary"]["reviewed_intent_count"] = int(reviewed.get("reviewed_intent_count") or 0)
-        task_source_path = str(reviewed_output_path)
+        if reviewed.get("ok", True):
+            task_source_path = str(reviewed_output_path)
+        else:
+            result["issues"].append(
+                {
+                    "phase": "reviewed_intents",
+                    "type": str(reviewed.get("error") or "reviewed_intents_failed"),
+                    "message": str(reviewed.get("message") or "Failed to produce reviewed intents."),
+                }
+            )
     elif reviewed_intents_path:
         reviewed_file = resolve_workspace_path(reviewed_intents_path)
         result["phases"]["reviewed_intents"] = {
@@ -358,8 +375,16 @@ def run_action_review_task_workflow(
         )
         result["phases"]["action_tasks"] = generation
         result["summary"]["action_generated_count"] = int(generation.get("generated_count") or 0)
+        if generation.get("ok") is False:
+            result["issues"].append(
+                {
+                    "phase": "action_tasks",
+                    "type": str(generation.get("error") or "action_generation_failed"),
+                    "message": str(generation.get("message") or "Failed to generate action tasks."),
+                }
+            )
 
-        if validate_outputs:
+        if validate_outputs and generation.get("ok") is not False:
             validation = validate_task_directory(
                 directory=str(action_task_dir),
                 expected_start_url=start_url,

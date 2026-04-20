@@ -296,9 +296,10 @@ deduplicates repeated global controls across routes, and suppresses controls
 already covered by stronger route/form evidence.
 
 `generate_action_tasks_from_intents` converts accepted browser-backed intents
-into conservative action task JSON files. Create/edit tasks open the workflow
-entrypoint and explicitly stop before submit/save/commit actions. Low-value
-labels such as numeric-only controls or raw path labels are skipped.
+into complete action task JSON files. Create/edit workflows are generated only
+when reviewed executable steps and commit policy exist; incomplete create/edit
+intents are skipped. Low-value labels such as numeric-only controls or raw path
+labels are skipped.
 
 For higher semantic quality, add an LLM review pass between discovery and task
 generation. `prepare_action_intent_review_packets` writes route-scoped packets
@@ -310,8 +311,8 @@ unobserved routes or controls.
 
 Reviewed intents can provide executable `workflow_steps`, `test_data`,
 `success_evidence`, and `commit_policy`. When those fields are present,
-generated create/edit tasks can fill and submit real workflows. Without those
-reviewed fields, create/edit tasks remain conservative and stop before commit.
+generated create/edit tasks can fill and submit real workflows. Missing reviewed
+workflow fields are skipped instead of generating partial placeholder tasks.
 
 Example ADK prompt:
 
@@ -332,6 +333,19 @@ Run the action-review-task-workflow skill for timeoff/action_intents.browser.aut
 Use site_name timeoff, output_root timeoff, storage_state_path .auth/timeoff_state.json, and start_url http://localhost:3102.
 First create review packets and stop for review.
 ```
+
+If `action_intents.browser*.json` is missing or stale, run upstream discovery
+first with `build_action_discovery_worklist` and
+`discover_page_actions_from_worklist`, then run
+`run_action_review_task_workflow` with the produced intents path.
+
+`reviewed_intents_json` should be produced by the agent/LLM from review packets,
+not hand-written in natural language. For safer execution in CLI flows, prefer
+writing reviewed decisions to a JSON file and pass `reviewed_intents_path`
+instead of embedding a long JSON string directly in the prompt.
+
+When `reviewed_intents_json` is malformed, the workflow now returns a structured
+`invalid_reviewed_intents_json` error result instead of crashing the whole run.
 
 The browser-backed phase writes per-route evidence plus `action_intents.json`
 style metadata, then action task files can be generated from accepted intents.
