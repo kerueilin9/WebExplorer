@@ -13,7 +13,7 @@ selector-level execution remain planned work.
 
 Current implementation status:
 
-- implemented: headed persistent `playwright-cli` adapter, guest/auth crawlers, manifest writer, context memory helpers, navigation task generator, validation helpers, manifest-first workflow tool, canonical action discovery worklist builder, browser-backed page action evidence discovery, LLM action-intent review packet flow, reviewed executable action task generation, static action intent extractor, minimal ADK Skill package
+- implemented: headed persistent `playwright-cli` adapter, guest/auth crawlers, manifest writer, recency-aware context memory helpers, navigation task generator, validation helpers, manifest-first workflow tool, canonical action discovery worklist builder, browser-backed page action evidence discovery, LLM action-intent review packet flow, reviewed executable action task generation, static action intent extractor, minimal ADK Skill package
 - planned: skill-first cross-workflow profile context, deeper selector-level execution, expanded ADK Skill resources and scripts
 - intentionally generic: SUT-specific behavior belongs in manifests, generated tasks, or optional profiles, not in crawler defaults
 

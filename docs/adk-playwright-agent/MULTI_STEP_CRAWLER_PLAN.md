@@ -329,6 +329,28 @@ Use deterministic compaction before relying on ADK-level event compaction:
 4. Replace long lists with counts plus samples.
 5. Keep raw snapshots on disk and reference them by path.
 
+Compaction must be direction-aware:
+
+- Historical streams such as visited paths, skipped routes, structured errors,
+  blocked actions, and error attempts keep the newest entries. This gives the
+  LLM recency bias and prevents it from forgetting the actions it just tried.
+- Pending crawl candidates keep the oldest entries because they represent the
+  front of the deterministic BFS queue.
+- Current-page DOM summaries keep document order, since top-level headings,
+  primary actions, and first same-origin links are usually the most useful UI
+  landmarks.
+
+The deterministic token estimator is intentionally lightweight but multilingual:
+ASCII characters are estimated at roughly 4 characters per token, while
+non-ASCII characters are weighted higher so Chinese or mixed-language SUTs do
+not silently overflow context. For production model-specific accounting, this
+can later be replaced with the provider's exact token counting API.
+
+Long selectors, URLs, and DOM-derived strings should use middle truncation
+rather than tail truncation. Keeping both the prefix and suffix preserves route
+origins plus important terminal details such as input names, CSS selector leaves,
+and query parameters.
+
 ADK context compaction can still be enabled as a second safety layer for long event histories, but crawler state should remain file/state backed and recoverable without the raw conversation.
 
 ### Error Attempt Memory

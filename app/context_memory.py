@@ -38,10 +38,18 @@ class PageSummary:
         return {
             "url": self.url,
             "title": self.title,
-            "headings": _limited_text(self.headings, heading_limit),
-            "primary_actions": _limited_text(self.primary_actions, action_limit),
-            "links_sample": _limited_dicts(self.links_sample, link_limit),
-            "forms": _limited_dicts(self.forms, form_limit),
+            "headings": _limited_text(self.headings, heading_limit, keep_newest=False),
+            "primary_actions": _limited_text(
+                self.primary_actions,
+                action_limit,
+                keep_newest=False,
+            ),
+            "links_sample": _limited_dicts(
+                self.links_sample,
+                link_limit,
+                keep_newest=False,
+            ),
+            "forms": _limited_dicts(self.forms, form_limit, keep_newest=False),
             "snapshot_artifact": self.snapshot_artifact,
         }
 
@@ -140,22 +148,63 @@ class TaskState:
 
     start_url: str | None = None
     phase: str = "guest"
-    visited_paths: list[str] = field(default_factory=list)
-    pending_paths: list[str] = field(default_factory=list)
+    _visited_paths: dict[str, None] = field(default_factory=dict, repr=False)
+    _pending_paths: dict[str, None] = field(default_factory=dict, repr=False)
     route_parents: dict[str, dict[str, str | None]] = field(default_factory=dict)
     discovered_routes: list[dict[str, Any]] = field(default_factory=list)
     skipped_routes: list[dict[str, Any]] = field(default_factory=list)
     errors: list[dict[str, Any]] = field(default_factory=list)
 
+    @property
+    def visited_paths(self) -> list[str]:
+        return list(self._visited_paths.keys())
+
+    @visited_paths.setter
+    def visited_paths(self, paths: list[str]) -> None:
+        self._visited_paths = dict.fromkeys(path for path in paths if path)
+
+    @property
+    def pending_paths(self) -> list[str]:
+        return list(self._pending_paths.keys())
+
+    @pending_paths.setter
+    def pending_paths(self, paths: list[str]) -> None:
+        self._pending_paths = {
+            path: None
+            for path in paths
+            if path and path not in self._visited_paths
+        }
+
+    @property
+    def visited_count(self) -> int:
+        return len(self._visited_paths)
+
+    @property
+    def pending_count(self) -> int:
+        return len(self._pending_paths)
+
+    def has_visited(self, path: str) -> bool:
+        return path in self._visited_paths
+
+    def has_pending(self, path: str) -> bool:
+        return path in self._pending_paths
+
     def add_visited(self, path: str) -> None:
-        if path not in self.visited_paths:
-            self.visited_paths.append(path)
-        if path in self.pending_paths:
-            self.pending_paths.remove(path)
+        if not path:
+            return
+        self._visited_paths[path] = None
+        self._pending_paths.pop(path, None)
 
     def add_pending(self, path: str) -> None:
-        if path and path not in self.visited_paths and path not in self.pending_paths:
-            self.pending_paths.append(path)
+        if path and path not in self._visited_paths and path not in self._pending_paths:
+            self._pending_paths[path] = None
+
+    def pop_next_pending(self) -> str | None:
+        if not self._pending_paths:
+            return None
+        path = next(iter(self._pending_paths))
+        self._pending_paths.pop(path, None)
+        return path
 
     def record_route_parent(
         self,
@@ -175,15 +224,27 @@ class TaskState:
         return {
             "start_url": self.start_url,
             "phase": self.phase,
-            "visited_count": len(self.visited_paths),
-            "pending_count": len(self.pending_paths),
+            "visited_count": self.visited_count,
+            "pending_count": self.pending_count,
             "discovered_route_count": len(self.discovered_routes),
             "skipped_route_count": len(self.skipped_routes),
             "error_count": len(self.errors),
-            "visited_paths": _limited_text(self.visited_paths, sample_limit),
-            "next_candidates": _limited_text(self.pending_paths, sample_limit),
-            "skipped_routes": _limited_dicts(self.skipped_routes, error_limit),
-            "errors": _limited_dicts(self.errors, error_limit),
+            "visited_paths": _limited_text(
+                self.visited_paths,
+                sample_limit,
+                keep_newest=True,
+            ),
+            "next_candidates": _limited_text(
+                self.pending_paths,
+                sample_limit,
+                keep_newest=False,
+            ),
+            "skipped_routes": _limited_dicts(
+                self.skipped_routes,
+                error_limit,
+                keep_newest=True,
+            ),
+            "errors": _limited_dicts(self.errors, error_limit, keep_newest=True),
         }
 
 
@@ -205,7 +266,9 @@ class LongTermMemory:
             self.storage_state_paths[reference.system_name] = reference.storage_state_path
 
     def remember_blocked_action(self, attempt: ErrorAttempt) -> None:
+        self.blocked_actions.pop(attempt.key, None)
         self.blocked_actions[attempt.key] = attempt
+        self.avoided_error_paths.pop(attempt.url, None)
         self.avoided_error_paths[attempt.url] = attempt.error_type
 
     def to_context_dict(self, compact_level: int = 0) -> dict[str, Any]:
@@ -223,12 +286,22 @@ class LongTermMemory:
             "known_safe_exclusions": _limited_text(
                 self.known_safe_exclusions,
                 _limit_for_level(compact_level, full=None, compact=25, minimal=8),
+                keep_newest=True,
             ),
             "blocked_actions": [
-                item.to_context_dict() for item in _limited_items(blocked_items, blocked_limit)
+                item.to_context_dict()
+                for item in _limited_items(
+                    blocked_items,
+                    blocked_limit,
+                    keep_newest=True,
+                )
             ],
             "avoided_error_paths": dict(
-                _limited_items(list(self.avoided_error_paths.items()), blocked_limit)
+                _limited_items(
+                    list(self.avoided_error_paths.items()),
+                    blocked_limit,
+                    keep_newest=True,
+                )
             ),
         }
 
@@ -299,6 +372,8 @@ class CrawlerContext:
             self.error_attempts[key] = attempt
         else:
             attempt.bump(message=message, block_after=self.loop_block_after)
+            self.error_attempts.pop(key, None)
+            self.error_attempts[key] = attempt
 
         if attempt.blocked:
             self.long_term_memory.remember_blocked_action(attempt)
@@ -344,6 +419,7 @@ class CrawlerContext:
                 for attempt in _limited_items(
                     list(self.error_attempts.values()),
                     _limit_for_level(compact_level, full=None, compact=30, minimal=10),
+                    keep_newest=True,
                 )
             ],
         }
@@ -362,10 +438,12 @@ def action_key(url: str, action: str, target: str) -> str:
 
 
 def estimate_tokens(payload: Any) -> int:
-    """Estimate token count from serialized JSON using a conservative character ratio."""
+    """Estimate token count from serialized JSON with lightweight multilingual weighting."""
 
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-    return max(1, len(serialized) // 4)
+    ascii_count = sum(1 for char in serialized if ord(char) < 128)
+    non_ascii_count = len(serialized) - ascii_count
+    return max(1, int((ascii_count / 4) + (non_ascii_count * 1.5)))
 
 
 def _normalize_key_part(value: str | None) -> str:
@@ -385,20 +463,40 @@ def _limit_for_level(
     return minimal
 
 
-def _limited_items(items: list[Any], limit: int | None) -> list[Any]:
+def _limited_items(
+    items: list[Any],
+    limit: int | None,
+    *,
+    keep_newest: bool = True,
+) -> list[Any]:
     if limit is None:
         return list(items)
-    return list(items[:limit])
+    if limit <= 0:
+        return []
+    return list(items[-limit:] if keep_newest else items[:limit])
 
 
-def _limited_text(values: list[str], limit: int | None) -> list[str]:
-    return [_truncate_text(value) for value in _limited_items(values, limit)]
+def _limited_text(
+    values: list[str],
+    limit: int | None,
+    *,
+    keep_newest: bool = True,
+) -> list[str]:
+    return [
+        _truncate_text(value)
+        for value in _limited_items(values, limit, keep_newest=keep_newest)
+    ]
 
 
-def _limited_dicts(values: list[dict[str, Any]], limit: int | None) -> list[dict[str, Any]]:
+def _limited_dicts(
+    values: list[dict[str, Any]],
+    limit: int | None,
+    *,
+    keep_newest: bool = True,
+) -> list[dict[str, Any]]:
     return [
         {str(key): _truncate_text(value) for key, value in item.items()}
-        for item in _limited_items(values, limit)
+        for item in _limited_items(values, limit, keep_newest=keep_newest)
     ]
 
 
@@ -406,7 +504,11 @@ def _truncate_text(value: Any, max_chars: int = 220) -> str:
     text = "" if value is None else str(value)
     if len(text) <= max_chars:
         return text
-    return f"{text[: max_chars - 3]}..."
+    if max_chars <= 3:
+        return "." * max(0, max_chars)
+    head_chars = (max_chars - 3) // 2
+    tail_chars = max_chars - 3 - head_chars
+    return f"{text[:head_chars]}...{text[-tail_chars:]}"
 
 
 __all__ = [

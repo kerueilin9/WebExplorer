@@ -189,10 +189,12 @@ def crawl_site_to_manifest(
                     sut_profile=normalized_sut_profile,
                 )
 
-        while context.task_state.pending_paths and len(routes) < max_pages:
-            current_path = context.task_state.pending_paths.pop(0)
+        while context.task_state.pending_count and len(routes) < max_pages:
+            current_path = context.task_state.pop_next_pending()
+            if current_path is None:
+                break
             current_depth = depth_by_path.get(current_path, 0)
-            if current_path in context.task_state.visited_paths:
+            if context.task_state.has_visited(current_path):
                 continue
             if current_depth > max_depth:
                 context.task_state.skipped_routes.append(
@@ -264,8 +266,8 @@ def crawl_site_to_manifest(
                         label=link.get("text") or candidate_path,
                     )
                 if (
-                    candidate_path not in context.task_state.visited_paths
-                    and candidate_path not in context.task_state.pending_paths
+                    not context.task_state.has_visited(candidate_path)
+                    and not context.task_state.has_pending(candidate_path)
                     and current_depth + 1 <= max_depth
                 ):
                     context.task_state.add_pending(candidate_path)
@@ -713,8 +715,8 @@ def _write_manifest(
         },
         "summary": {
             "route_count": len(routes),
-            "visited_count": len(context.task_state.visited_paths),
-            "pending_count": len(context.task_state.pending_paths),
+            "visited_count": context.task_state.visited_count,
+            "pending_count": context.task_state.pending_count,
             "skipped_count": len(context.task_state.skipped_routes),
             "error_count": len(context.task_state.errors),
         },
@@ -739,8 +741,8 @@ def _write_manifest(
         "manifest_path": str(write_destination),
         "preserved_existing_manifest": preserved_existing_manifest,
         "route_count": len(routes),
-        "visited_count": len(context.task_state.visited_paths),
-        "pending_count": len(context.task_state.pending_paths),
+        "visited_count": context.task_state.visited_count,
+        "pending_count": context.task_state.pending_count,
         "skipped_count": len(context.task_state.skipped_routes),
         "error_count": len(context.task_state.errors),
         "context_budget": context_pack["context_budget"],

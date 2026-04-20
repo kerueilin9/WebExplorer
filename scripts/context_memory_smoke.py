@@ -8,6 +8,8 @@ from adk_playwright_agent.app.context_memory import (
     CredentialReference,
     CrawlerContext,
     PageSummary,
+    _truncate_text,
+    estimate_tokens,
 )
 
 
@@ -31,6 +33,8 @@ def main() -> None:
         path = f"/sample-route-{index}"
         context.task_state.add_pending(path)
         context.task_state.record_route_parent(path, source_path="/", label=f"Route {index}")
+    for index in range(40):
+        context.task_state.add_visited(f"/visited-route-{index}")
 
     context.set_current_page(
         PageSummary(
@@ -85,6 +89,22 @@ def main() -> None:
     )
     assert compact_pack["context_budget"]["compacted"] is True
     assert "raw_password" not in serialized_pack
+    assert compact_pack["task_state"]["visited_paths"] == [
+        f"/visited-route-{index}" for index in range(32, 40)
+    ]
+    assert compact_pack["task_state"]["next_candidates"] == [
+        f"/sample-route-{index}" for index in range(8)
+    ]
+    assert context.task_state.has_visited("/visited-route-39")
+    assert context.task_state.has_pending("/sample-route-0")
+    assert context.task_state.pop_next_pending() == "/sample-route-0"
+    assert estimate_tokens({"text": "測試" * 100}) > estimate_tokens({"text": "test" * 100})
+    truncated = _truncate_text(
+        "body > main > " + ("section > " * 80) + 'input[name="password"]',
+        max_chars=80,
+    )
+    assert truncated.startswith("body > main")
+    assert truncated.endswith('input[name="password"]')
 
     print(
         json.dumps(
@@ -93,6 +113,7 @@ def main() -> None:
                 "blocked_action_count": len(context.long_term_memory.blocked_actions),
                 "compaction": compact_pack["context_budget"],
                 "next_candidate_count": len(compact_pack["task_state"]["next_candidates"]),
+                "visited_sample": compact_pack["task_state"]["visited_paths"],
                 "link_sample_count": len(
                     compact_pack["working_memory"]["current_page"]["links_sample"]
                 ),
