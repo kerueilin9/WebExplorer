@@ -204,6 +204,32 @@ Exit criteria:
 
 - evaluation can flag missed routes, weak assertions, and malformed outputs
 
+### Phase 9. Cross-Workflow Profile Context
+
+Add a profile-backed parameter context so operators can invoke workflows and
+tools without repeating common SUT parameters.
+
+Deliverables:
+
+- SUT profile schema with shared defaults plus workflow/tool overlays
+- profile registry design for shared defaults and local overrides
+- compatibility policy for existing navigation-only profile shape
+- generic JSON profile I/O helpers in `workspace_tools`
+- generic skill contract for profile parameter loading and tool/workflow invocation
+- deterministic parameter resolution order for all workflows/tools
+- smoke tests for profile lookup across navigation, action-review, and direct tool runs
+
+Exit criteria:
+
+- prompts like Generate timeoff navigation tests resolve using shared +
+  workflow-specific profile context
+- action-review and direct tool runs can resolve shared auth/target parameters
+  from the same profile
+- profile JSON read/write ownership is consolidated in `workspace_tools`
+- missing required fields trigger one focused clarification question
+- resolved parameters and outputs remain auditable and reproducible
+- profile-based resolution is enforced by a root system-prompt session-first routing guard plus skill-level fallback/merge logic
+
 ## MVP Acceptance Criteria
 
 The MVP should be considered done when all of the following are true:
@@ -237,6 +263,16 @@ The skillized target should be considered done when all of the following are tru
 - users can trigger it with a concise prompt instead of listing every step
 - the skill run reports generated_count, skipped_count, and validation issues for guest/auth outputs
 - skill defaults remain overrideable through explicit prompt parameters
+
+## Expanded Acceptance Criteria (Profile-Backed Invocation)
+
+The profile-backed target should be considered done when all of the following are true:
+
+- operators can invoke common runs with short prompts tied to SUT name and intent
+- profile defaults are reusable across multiple workflows and direct tool runs
+- prompt-time overrides still take precedence over saved profiles
+- no raw passwords are stored in profile files or session state
+- workflow results are equivalent to manually parameterized runs
 
 ## Safety Policy
 

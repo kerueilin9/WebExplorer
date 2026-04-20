@@ -51,7 +51,10 @@ from adk_playwright_agent.tools.workflow_tools import (
 )
 from adk_playwright_agent.tools.workspace_tools import (
     list_files,
+    merge_json_files,
+    read_json_file,
     read_text_file,
+    write_json_file,
     write_text_file,
 )
 
@@ -78,6 +81,7 @@ def _load_skill_toolsets():
     skill_dirs = [
         skills_root / "manifest-first-route-workflow",
         skills_root / "action-review-task-workflow",
+        skills_root / "profile-parameter-loading-workflow",
     ]
     existing_skill_dirs = [skill_dir for skill_dir in skill_dirs if skill_dir.exists()]
     if not existing_skill_dirs:
@@ -121,7 +125,10 @@ def _build_root_agent():
             FunctionTool(crawl_authenticated_site_to_manifest),
             FunctionTool(list_files),
             FunctionTool(read_text_file),
+            FunctionTool(read_json_file),
             FunctionTool(write_text_file, require_confirmation=True),
+            FunctionTool(write_json_file, require_confirmation=True),
+            FunctionTool(merge_json_files, require_confirmation=True),
             FunctionTool(write_route_manifest),
             FunctionTool(generate_task_file, require_confirmation=True),
             FunctionTool(generate_tasks_from_manifest),

@@ -14,7 +14,7 @@ selector-level execution remain planned work.
 Current implementation status:
 
 - implemented: headed persistent `playwright-cli` adapter, guest/auth crawlers, manifest writer, context memory helpers, navigation task generator, validation helpers, manifest-first workflow tool, canonical action discovery worklist builder, browser-backed page action evidence discovery, LLM action-intent review packet flow, reviewed executable action task generation, static action intent extractor, minimal ADK Skill package
-- planned: deeper selector-level execution, expanded ADK Skill resources and scripts
+- planned: skill-first cross-workflow profile context, deeper selector-level execution, expanded ADK Skill resources and scripts
 - intentionally generic: SUT-specific behavior belongs in manifests, generated tasks, or optional profiles, not in crawler defaults
 
 ## Goal
@@ -22,6 +22,8 @@ Current implementation status:
 Build an ADK-based agent that behaves like a lightweight browser QA assistant:
 
 - start from a target URL
+- allow short profile-backed prompts such as Generate timeoff navigation tests, routed through a dedicated skill
+- reuse one SUT profile as a shared parameter source across workflows and direct tool runs
 - inspect the current project for existing conventions
 - open a browser session with `--headed` and `--persistent`
 - explore guest, signed-in, and admin routes
@@ -65,6 +67,22 @@ ADK Skills notes:
 Recommended skill for this project:
 
 - `manifest-first-route-workflow`: executes guest crawl, auth crawl, task generation, and directory validation in one guided run
+- `profile-parameter-loading-workflow`: resolves SUT profile defaults for short prompts, then applies them to the requested tool/workflow
+
+Agent-core routing policy:
+
+- root system instructions enforce session-first parameter reuse for navigation/test/task-generation requests
+- when session parameters are missing/incomplete, root routing falls back to `profile-parameter-loading-workflow`
+- agent should not ask for common SUT parameters (for example `start_url` and credential references) before profile lookup has been attempted and failed
+
+Profile direction for next phase:
+
+- SUT profiles should not be limited to one workflow preset
+- the same profile should provide shared target/auth/limit defaults for
+    navigation, action-review, and direct tool execution
+- profile JSON read/write should live in generic `workspace_tools`
+- profile intent/merge semantics should live in skill/workflow resolvers
+- no dedicated profile resolver module is required when skill-level routing uses JSON tools directly
 
 ## Why ADK Fits This Problem
 
@@ -174,6 +192,7 @@ The first implementation should target one site at a time and one browser sessio
 - [Implementation Plan](./IMPLEMENTATION_PLAN.md)
 - [Multi-Step Web Crawler Plan](./MULTI_STEP_CRAWLER_PLAN.md)
 - [Browser-Backed Action Discovery](./BROWSER_BACKED_ACTION_DISCOVERY.md)
+- [Parameter Profiles and Short Prompts](./PARAMETER_PROFILES_AND_SHORT_PROMPTS.md)
 
 ## Official ADK References
 

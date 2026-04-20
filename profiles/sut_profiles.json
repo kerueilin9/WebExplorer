@@ -1,0 +1,119 @@
+{
+  "version": "1.0",
+  "profiles": {
+    "keystonejs": {
+      "aliases": [
+        "keystonejs",
+        "keystone"
+      ],
+      "navigation": {
+        "tool": "run_manifest_first_route_workflow",
+        "params": {
+          "start_url": "http://localhost:3100",
+          "site_name": "keystonejs",
+          "output_root": "keystonejs",
+          "credentials_system_name": "keystonejs",
+          "credentials_path": "passwords.txt",
+          "storage_state_path": ".auth/keystonejs_state.json",
+          "sut_profile": "generic",
+          "run_guest": true,
+          "run_authenticated": true,
+          "generate_guest_tasks": true,
+          "generate_auth_tasks": true,
+          "validate_outputs": true,
+          "guest_max_depth": 2,
+          "auth_max_depth": 3,
+          "max_pages": 120,
+          "include_home": true,
+          "include_unsafe_routes": false,
+          "skip_invalid_query_routes": true
+        }
+      }
+    },
+    "nodebb": {
+      "aliases": [
+        "nodebb",
+        "node-bb"
+      ],
+      "navigation": {
+        "tool": "run_manifest_first_route_workflow",
+        "params": {
+          "start_url": "http://localhost:3101",
+          "site_name": "nodebb",
+          "output_root": "nodebb",
+          "credentials_system_name": "nodebb",
+          "credentials_path": "passwords.txt",
+          "storage_state_path": ".auth/nodebb_state.json",
+          "sut_profile": "generic",
+          "run_guest": true,
+          "run_authenticated": true,
+          "generate_guest_tasks": true,
+          "generate_auth_tasks": true,
+          "validate_outputs": true,
+          "guest_max_depth": 2,
+          "auth_max_depth": 3,
+          "max_pages": 200,
+          "include_home": true,
+          "include_unsafe_routes": false,
+          "skip_invalid_query_routes": true
+        }
+      }
+    },
+    "spring-petclinic": {
+      "aliases": [
+        "spring-petclinic",
+        "springpetclinic",
+        "petclinic"
+      ],
+      "navigation": {
+        "tool": "run_manifest_first_route_workflow",
+        "params": {
+          "start_url": "http://localhost:3001",
+          "site_name": "spring-petclinic",
+          "output_root": "spring-petclinic",
+          "sut_profile": "generic",
+          "run_guest": true,
+          "run_authenticated": false,
+          "generate_guest_tasks": true,
+          "generate_auth_tasks": false,
+          "validate_outputs": true,
+          "guest_max_depth": 2,
+          "auth_max_depth": 2,
+          "max_pages": 30,
+          "include_home": true,
+          "include_unsafe_routes": false,
+          "skip_invalid_query_routes": true
+        }
+      }
+    },
+    "timeoff": {
+      "aliases": [
+        "timeoff",
+        "to"
+      ],
+      "navigation": {
+        "tool": "run_manifest_first_route_workflow",
+        "params": {
+          "start_url": "http://localhost:3102",
+          "site_name": "timeoff",
+          "output_root": "timeoff",
+          "credentials_system_name": "timeoff",
+          "credentials_path": "passwords.txt",
+          "storage_state_path": ".auth/timeoff_state.json",
+          "sut_profile": "generic",
+          "run_guest": true,
+          "run_authenticated": true,
+          "generate_guest_tasks": true,
+          "generate_auth_tasks": true,
+          "validate_outputs": true,
+          "guest_max_depth": 2,
+          "auth_max_depth": 3,
+          "max_pages": 120,
+          "include_home": true,
+          "include_unsafe_routes": false,
+          "skip_invalid_query_routes": true
+        }
+      }
+    }
+  }
+}

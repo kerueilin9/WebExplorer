@@ -382,12 +382,22 @@ These keys should live in `session.state`.
 - `target.base_url`
 - `target.output_dir`
 - `target.mode`
+- `target.sut_id`
+- `target.profile_id`
+- `target.workflow_type`
+- `target.tool_name`
+- `target.profile_source`
+- `target.last_resolved_params`
 
 Example values:
 
 - `http://localhost:3101/`
 - `D:/Ker/Desktop/Document/other/GUI_test/manifests/example_sut`
 - `task_json`
+- `timeoff`
+- `timeoff.navigation.default`
+- `manifest_first_navigation`
+- `run_manifest_first_route_workflow`
 
 ### Browser Session
 
@@ -462,6 +472,133 @@ Do not store the raw password in long-lived state if it can be avoided. Prefer:
 - `policy.allow_admin_submit`
 - `policy.allow_destructive_clicks`
 - `policy.allow_file_write`
+
+## Parameter Profile Registry
+
+To reduce repetitive prompts, add a profile registry for reusable SUT
+parameters across all workflows and direct tool runs.
+
+Suggested files:
+
+- shared defaults: `profiles/sut_profiles.json`
+- local override: `.adk/sut_profiles.local.json`
+
+Suggested profile shape:
+
+```json
+{
+  "version": "1.0",
+  "profiles": {
+    "timeoff": {
+      "aliases": ["timeoff"],
+      "shared": {
+        "target": {
+          "start_url": "http://localhost:3102",
+          "site_name": "timeoff",
+          "output_root": "timeoff",
+          "sut_profile": "generic"
+        },
+        "auth": {
+          "credentials_system_name": "timeoff",
+          "credentials_path": "passwords.txt",
+          "storage_state_path": ".auth/timeoff_state.json"
+        },
+        "limits": {
+          "guest_max_depth": 2,
+          "auth_max_depth": 3,
+          "max_pages": 120
+        }
+      },
+      "workflows": {
+        "navigation": {
+          "tool": "run_manifest_first_route_workflow",
+          "params": {
+            "run_guest": true,
+            "run_authenticated": true,
+            "generate_guest_tasks": true,
+            "generate_auth_tasks": true,
+            "validate_outputs": true
+          }
+        },
+        "action_review": {
+          "tool": "run_action_review_task_workflow",
+          "params": {
+            "require_review": true,
+            "generate_tasks": true,
+            "validate_outputs": true
+          }
+        }
+      },
+      "tools": {
+        "crawl_site_to_manifest": {
+          "params": {
+            "same_origin_only": true
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Rules:
+
+- store only credential references and paths, never raw secret values
+- keep values serializable and auditable
+- separate shared defaults from developer-local overrides
+- keep path fields workspace-relative to the active agent workspace root
+- keep a compatibility path for existing `navigation`-only profiles during migration
+
+## Workspace JSON Tool Ownership
+
+Use `workspace_tools` as the generic JSON data access layer.
+
+Recommended helpers:
+
+- `read_json_file(path)`
+- `write_json_file(path, data, overwrite=true)`
+- optional: `merge_json_files(base_path, override_path)` for local overrides
+
+Current implementation slice:
+
+- `read_json_file(path)` implemented
+- `write_json_file(path, data, overwrite=true)` implemented
+- `merge_json_files(base_path, override_path, output_path?)` implemented
+
+Scope boundaries:
+
+- `workspace_tools`: file I/O only, no workflow semantics
+- skill/workflow resolver: intent parsing, profile selection, parameter merge rules
+- keep profile resolution in skill/workflow routing, not in a dedicated profile wrapper module
+
+## Short Prompt Resolution Policy
+
+For prompts such as Generate timeoff navigation tests:
+
+0. enforce agent-core routing guard in system instructions: reuse complete same-SUT session parameters first
+1. detect workflow intent (navigation)
+2. parse prompt text in skill/workflow routing logic
+3. if required parameters are missing/incomplete, load profile JSON through `workspace_tools` helpers
+4. resolve SUT profile (timeoff)
+5. merge parameters using precedence:
+  - prompt overrides
+  - workflow-specific profile defaults
+  - tool-specific profile defaults
+  - shared profile defaults
+  - workflow safe defaults
+6. trigger the mapped skill wrapper (`profile-parameter-loading-workflow`)
+7. let the skill call the workflow/tool with resolved params
+
+If required profile fields are missing, ask one targeted clarification question
+and reuse the answer for subsequent runs.
+
+Routing uses both layers:
+
+- root system instructions: global pre-routing guard that reuses session context first and triggers profile loading on missing/incomplete fields
+- skill/tool contracts: detailed parsing, merge precedence, and tool selection rules
+
+For non-navigation workflows (for example action-review), use the same profile
+resolution contract with the corresponding workflow key.
 
 ## Route Metadata Shape
 
