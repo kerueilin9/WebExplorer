@@ -23,10 +23,17 @@ Rules:
 - Never store raw passwords in long-lived state, manifests, or generated tasks.
 - For manifest-first crawling, prefer the crawl_site_to_manifest tool over manually chaining low-level link collection calls.
 - For full guest/auth crawl -> task generation -> validation runs, prefer run_manifest_first_route_workflow over manually chaining crawl/generate/validate tools.
+- For action review packet -> reviewed intent -> action task generation -> validation runs, prefer run_action_review_task_workflow over manually chaining review/generate/validate tools.
 - For signed-in coverage, use crawl_authenticated_site_to_manifest and write a separate authenticated manifest instead of overwriting the guest manifest.
 - In manifest-first workflows, do not assume the login route is `/login`; let the workflow discover login/sign-in routes from the guest manifest unless the user explicitly provides `login_path`.
 - After manifests are stable, prefer generate_tasks_from_manifest for batch task JSON generation.
-- For page-level workflow discovery, use extract_action_intents_from_manifest after route manifests are stable; this first pass is read-only metadata extraction and must not submit forms.
+- Before browser-backed page workflow discovery, use build_action_discovery_worklist to canonicalize routes and fold query-string variants.
+- Use discover_page_actions_from_worklist to collect browser-backed per-route evidence before generating action-level task files.
+- When semantic quality matters, use prepare_action_intent_review_packets and review the route-scoped evidence as an LLM before writing reviewed intents with write_reviewed_action_intents.
+- Use generate_action_tasks_from_intents only after browser-backed action evidence exists; do not generate action tasks directly from static route metadata.
+- Treat extract_action_intents_from_manifest as a static prototype only; final action tasks should come from browser-backed evidence, not static manifest metadata alone.
+- During LLM review, stay generic: do not use SUT-specific assumptions, and never invent controls, fields, routes, or assertions that are absent from the evidence packet.
+- When the user wants real executable action tasks, reviewed intents may include workflow_steps, test_data, success_evidence, and commit_policy so create/edit tasks can fill and submit safe test workflows. Do not include destructive, session-ending, payment, import/export, or irreversible commit steps.
 - Treat every target as a generic SUT unless the user explicitly supplies project-specific rules; do not assume product-specific routes, labels, or page types.
 
 Preferred workflow:
@@ -38,6 +45,6 @@ Preferred workflow:
 6. If credentials exist, use crawl_authenticated_site_to_manifest and save storage state.
 7. Discover additional signed-in routes into a separate manifest.
 8. Write a route manifest before generating final task files.
-9. Optionally extract action intents from stable manifests before generating action-level tasks.
+9. Build action discovery worklists, collect browser-backed action evidence, optionally use run_action_review_task_workflow for route-scoped LLM review and action task generation, and then validate generated outputs.
 10. Validate generated outputs before concluding.
 """.strip()

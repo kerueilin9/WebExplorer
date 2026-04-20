@@ -8,13 +8,13 @@ As of 2026-04-17, this document set describes the design and current implementat
 - optionally save authenticated browser state for reuse
 
 This package now lives inside the `adk_playwright_agent` implementation repo.
-Some pieces are implemented already, while browser-backed action discovery,
-action task generation, and expanded Skill resources remain planned work.
+Some pieces are implemented already, while expanded Skill resources and deeper
+selector-level execution remain planned work.
 
 Current implementation status:
 
-- implemented: headed persistent `playwright-cli` adapter, guest/auth crawlers, manifest writer, context memory helpers, navigation task generator, validation helpers, manifest-first workflow tool, static action intent extractor, minimal ADK Skill package
-- planned: browser-backed action discovery, action workflow task generation, expanded ADK Skill resources and scripts
+- implemented: headed persistent `playwright-cli` adapter, guest/auth crawlers, manifest writer, context memory helpers, navigation task generator, validation helpers, manifest-first workflow tool, canonical action discovery worklist builder, browser-backed page action evidence discovery, LLM action-intent review packet flow, reviewed executable action task generation, static action intent extractor, minimal ADK Skill package
+- planned: deeper selector-level execution, expanded ADK Skill resources and scripts
 - intentionally generic: SUT-specific behavior belongs in manifests, generated tasks, or optional profiles, not in crawler defaults
 
 ## Goal

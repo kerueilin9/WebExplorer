@@ -230,18 +230,60 @@ worklist from a stable manifest, skip or fold query-string variants, open each
 canonical route with `playwright-cli`, inspect the live UI, and generate action
 tasks only from observed safe UI evidence.
 
+The first implemented steps are `build_action_discovery_worklist`, which prepares
+the canonical route list, and `discover_page_actions_from_worklist`, which opens
+each canonical route and writes per-route browser evidence plus action-intent
+drafts. Browser-backed discovery folds query variants, skips auth redirects,
+deduplicates repeated global controls across routes, and suppresses controls
+already covered by stronger route/form evidence.
+
+`generate_action_tasks_from_intents` converts accepted browser-backed intents
+into conservative action task JSON files. Create/edit tasks open the workflow
+entrypoint and explicitly stop before submit/save/commit actions. Low-value
+labels such as numeric-only controls or raw path labels are skipped.
+
+For higher semantic quality, add an LLM review pass between discovery and task
+generation. `prepare_action_intent_review_packets` writes route-scoped packets
+containing baseline evidence, forms, controls, and heuristic candidates. The ADK
+agent reviews those packets as a generic SUT reviewer, then
+`write_reviewed_action_intents` writes only constrained updates to existing
+intent IDs. This keeps LLM judgment in the loop without letting it invent
+unobserved routes or controls.
+
+Reviewed intents can provide executable `workflow_steps`, `test_data`,
+`success_evidence`, and `commit_policy`. When those fields are present,
+generated create/edit tasks can fill and submit real workflows. Without those
+reviewed fields, create/edit tasks remain conservative and stop before commit.
+
 Example ADK prompt:
 
 ```text
-Extract action intents from timeoff/route_manifest.auth.generic.json into timeoff/action_intents.auth.generic.json. Use site_name timeoff and skip high-risk actions.
+Build an action discovery worklist from timeoff/route_manifest.auth.generic.json into timeoff/action_worklist.auth.generic.json. Use site_name timeoff and skip query-string variants.
+
+Run browser-backed page action discovery from timeoff/action_worklist.auth.generic.json into timeoff/action_intents.browser.auth.generic.json. Write evidence under timeoff/action_discovery. Do not submit forms or generate final action tasks yet.
+
+Prepare action intent review packets from timeoff/action_intents.browser.auth.generic.json into timeoff/action_review_packets. Review the packets as a generic SUT action reviewer, then write reviewed intents to timeoff/action_intents.reviewed.auth.generic.json.
+
+Generate action tasks from timeoff/action_intents.reviewed.auth.generic.json into timeoff/generated_tasks/actions. Use site_name timeoff, storage_state_path .auth/timeoff_state.json, and clear_existing true.
 ```
 
-The browser-backed phase should write per-route evidence plus
-`action_intents.json` style metadata. Query-string routes such as
+For the repeatable workflow wrapper, use:
+
+```text
+Run the action-review-task-workflow skill for timeoff/action_intents.browser.auth.generic.json.
+Use site_name timeoff, output_root timeoff, storage_state_path .auth/timeoff_state.json, and start_url http://localhost:3102.
+First create review packets and stop for review.
+```
+
+The browser-backed phase writes per-route evidence plus `action_intents.json`
+style metadata, then action task files can be generated from accepted intents.
+Query-string routes such as
 `/calendar/teamview?department=1&date=2026-03` should be folded into
 `/calendar/teamview` and not explored or generated as separate action tasks.
 High-risk candidates such as delete, import, upload, export, approve, and reject
 remain skipped by default and reported in `skipped_candidates`.
+Repeated global controls such as a persistent top-nav `New` button are retained
+once and reported as `global_duplicate` on later routes.
 
 ## Context Memory
 

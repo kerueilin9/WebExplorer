@@ -70,6 +70,52 @@
       }
     },
     {
+      "id": "sample_authenticated_calendar_teamview",
+      "label": "Team view",
+      "url": "http://localhost:3102/calendar/teamview",
+      "path": "/calendar/teamview",
+      "query": "",
+      "page_type": "page",
+      "phase": "authenticated",
+      "require_login": true,
+      "navigation_steps": [
+        "I open the configured home page",
+        "I click the \"Team view\" link to reach \"/calendar/teamview\""
+      ],
+      "context": {
+        "headings": ["Team view"],
+        "primary_actions": ["Department"],
+        "forms": [
+          {
+            "tag": "select",
+            "type": "",
+            "name": "department",
+            "placeholder": "",
+            "aria_label": "Department"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sample_authenticated_calendar_teamview_march",
+      "label": "Team view March",
+      "url": "http://localhost:3102/calendar/teamview?department=1&date=2026-03",
+      "path": "/calendar/teamview",
+      "query": "department=1&date=2026-03",
+      "page_type": "page",
+      "phase": "authenticated",
+      "require_login": true,
+      "navigation_steps": [
+        "I open the configured home page",
+        "I click the \"Team view\" link to reach \"/calendar/teamview\""
+      ],
+      "context": {
+        "headings": ["Team view"],
+        "primary_actions": ["Department"],
+        "forms": []
+      }
+    },
+    {
       "id": "sample_authenticated_users_delete",
       "label": "Delete employee",
       "url": "http://localhost:3102/users/delete/1",
@@ -81,6 +127,21 @@
       "context": {
         "headings": ["Delete employee"],
         "primary_actions": ["Delete"],
+        "forms": []
+      }
+    },
+    {
+      "id": "sample_authenticated_logout",
+      "label": "Logout",
+      "url": "http://localhost:3102/logout",
+      "path": "/logout",
+      "query": "",
+      "page_type": "page",
+      "phase": "authenticated",
+      "require_login": true,
+      "context": {
+        "headings": ["Logout"],
+        "primary_actions": ["Logout"],
         "forms": []
       }
     }

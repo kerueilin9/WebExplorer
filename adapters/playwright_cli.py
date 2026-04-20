@@ -73,6 +73,9 @@ class PlaywrightCliAdapter:
     def save_storage_state(self, session_name: str, path: str) -> CommandResult:
         return self._run(self._session_args(session_name) + ["state-save", path])
 
+    def load_storage_state(self, session_name: str, path: str) -> CommandResult:
+        return self._run(self._session_args(session_name) + ["state-load", path])
+
     def close_browser(self, session_name: str) -> CommandResult:
         return self._run(self._session_args(session_name) + ["close"])
 
@@ -93,12 +96,15 @@ class PlaywrightCliAdapter:
         )
         stdout = completed.stdout.strip()
         stderr = completed.stderr.strip()
+        returncode = completed.returncode
+        if stdout.startswith("### Error"):
+            returncode = returncode or 1
         url = _match_value(_PAGE_URL_RE, stdout)
         title = _match_value(_PAGE_TITLE_RE, stdout)
         snapshot_path = _match_value(_SNAPSHOT_RE, stdout)
         return CommandResult(
             command=command,
-            returncode=completed.returncode,
+            returncode=returncode,
             stdout=stdout,
             stderr=stderr,
             url=url,

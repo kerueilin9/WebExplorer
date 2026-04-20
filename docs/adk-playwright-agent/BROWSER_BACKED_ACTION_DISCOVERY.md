@@ -148,6 +148,18 @@ For each canonical route:
 8. Generate task drafts only from observed evidence.
 9. Return to the route baseline before exploring the next control.
 
+Implemented baseline behavior:
+
+- `build_action_discovery_worklist` folds query-string variants into one canonical route per path.
+- `discover_page_actions_from_worklist` opens each canonical route, captures DOM evidence, and writes action-intent drafts.
+- Repeated global controls are emitted once and skipped as `global_duplicate` on later routes.
+- Browser controls already covered by stronger route/form evidence are skipped as `covered_by_route_intent` or `covered_by_form_intent`.
+- Authenticated routes that land on a login page are skipped as `auth_redirect_detected` instead of producing false guest-page intents.
+- `prepare_action_intent_review_packets` creates route-scoped evidence packets for LLM semantic review.
+- `write_reviewed_action_intents` writes constrained LLM review decisions back to an intent file without allowing invented intent IDs.
+- `generate_action_tasks_from_intents` converts accepted browser-backed intents into action tasks. Without reviewed workflow steps it keeps create/edit conservative; with reviewed `workflow_steps` and `commit_policy` it can generate executable form-fill/submit tasks.
+- Action task generation skips low-value labels and controls already covered by a target route intent.
+
 Hard stop conditions:
 
 - URL leaves the selected origin
@@ -192,6 +204,10 @@ Recommended artifacts:
     snapshots/
       <route_id>__baseline.json
       <route_id>__after_create_click.json
+  action_review_packets/
+    review_index.json
+    packet_<route_id>.json
+  action_intents.reviewed.auth.generic.json
   generated_tasks/
     actions/
       task_<site>_action_001_<intent>.json
@@ -210,7 +226,11 @@ Recommended artifacts:
 - evidence snapshot paths
 
 Task files should reference only workflows that were actually observed through
-browser exploration.
+browser exploration. For create/edit workflows, the default generation baseline
+opens the workflow entrypoint and stops before commit actions. A reviewed intent
+may opt into executable task generation by providing `workflow_steps`,
+`test_data`, `success_evidence`, and `commit_policy`, all grounded in the packet
+evidence.
 
 ## Task Authoring Rules
 
@@ -235,7 +255,8 @@ Do not generate:
 Create Employee
 ```
 
-unless the workflow policy explicitly allows form fill and submit generation.
+unless the LLM review explicitly provides evidence-backed executable
+`workflow_steps` and a safe `commit_policy`.
 
 ## Interaction With Navigation Tasks
 
@@ -244,7 +265,7 @@ Route-level navigation task generation remains manifest-driven and deterministic
 Action task generation becomes browser-backed:
 
 ```text
-manifest -> canonical route worklist -> browser action discovery -> evidence -> action tasks
+manifest -> canonical route worklist -> browser action discovery -> evidence -> optional LLM review -> action tasks
 ```
 
 This prevents the static route manifest from pretending to know page workflows it
@@ -255,19 +276,18 @@ has not actually observed.
 Keep the existing `manifest-first-route-workflow` skill focused on route crawl
 and navigation task generation.
 
-Add a second skill later:
+Use a second skill for browser-backed action review and task generation:
 
 ```text
-browser-backed-action-discovery
+action-review-task-workflow
 ```
 
 Suggested prompt:
 
 ```text
-Run browser-backed action discovery for <output_root>/route_manifest.auth.generic.json.
+Run the action-review-task-workflow skill for <output_root>/action_intents.browser.auth.generic.json.
 Use site_name <sut_name>, output_root <output_root>, storage_state_path <state_path>,
-skip query-string variants, max_routes 50, max_safe_clicks_per_route 5,
-and generate action tasks only from observed safe UI evidence.
+and start_url <start_url>. First create review packets and stop for review.
 ```
 
 This split keeps route coverage and action workflow authoring independently
