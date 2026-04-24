@@ -62,8 +62,7 @@ _ACTION_PAGE_DATA_SCRIPT = (
     "}).filter(x => x.label || x.href).slice(0, 160);"
     "const headings = [...document.querySelectorAll('h1,h2,h3,[role=\"heading\"]')].filter(visible).map(text).filter(Boolean).slice(0, 30);"
     "const tables = [...document.querySelectorAll('table,[role=\"table\"],.table')].filter(visible).map(el => ({ text: text(el).slice(0, 240) })).slice(0, 12);"
-    "const visible_text = text(document.body).slice(0, 5000);"
-    "return { url: location.href, title: document.title, headings, visible_text, forms, controls, tables };"
+    "return { url: location.href, title: document.title, headings, forms, controls, tables };"
     "})())"
 )
 
@@ -616,44 +615,9 @@ def _task_page_observation_payload(
             "path": str(baseline.get("snapshot_path") or ""),
             "content": snapshot_content,
         },
-        "visible_text": _clean_text(str(page_data.get("visible_text") or ""))[:5000],
         "forms": forms,
         "tables": _limited_list(tables, 20),
         "errors": errors,
-        "llm_task_discovery": {
-            "goal": "Propose useful page-action task drafts from observed page evidence.",
-            "rules": [
-                "Use the playwright-cli snapshot tree as the primary page representation; use structured fields only as supporting evidence.",
-                "Do not invent controls, routes, fields, or assertions not visible in this observation.",
-                "Drafts may be lightweight; final assertions can be repaired after execution.",
-                "Separate priority from execution order.",
-                "Classify delete as high-priority but last-batch and non-committing unless disposable test data exists.",
-                "Do not keep route-entry drafts that only open another page; focus on actionable workflows on the current page.",
-                "If a page contains one primary submit workflow, keep only the best happy-path draft instead of enumerating many invalid or edge-input variants.",
-            ],
-            "preferred_categories": [
-                "create",
-                "edit",
-                "delete",
-                "filter",
-                "search",
-                "export",
-                "import",
-                "auth_session",
-                "unknown",
-            ],
-        },
-        "expected_draft_shape": {
-            "draft_id": "stable optional id",
-            "route": str(route.get("canonical_path") or route.get("path") or "/"),
-            "goal": "one sentence user-visible task goal",
-            "category": "create|edit|delete|filter|search|export|import|auth_session|unknown",
-            "risk": "read_only|state_changing_safe|state_changing_destructive|session_ending|external_side_effect|unknown",
-            "priority": "P0|P1|P2|P3",
-            "rough_steps": ["optional rough steps"],
-            "evidence": ["visible evidence from this observation"],
-            "dedupe_key": "optional stable semantic key",
-        },
     }
 
 

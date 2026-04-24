@@ -63,8 +63,9 @@ def main() -> None:
     assert observation_result["observation_count"] == 3
     assert all(path.exists() for path in observation_files)
     assert all(path.suffix == ".yml" for path in observation_files)
-    assert "llm_task_discovery" in first_observation
+    assert "llm_task_discovery" not in first_observation
     assert "intent_drafts" not in first_observation
+    assert "visible_text" not in first_observation
     assert first_observation["page_snapshot"]["content"]
     assert first_observation["page_id"] == "page-001"
 

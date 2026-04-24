@@ -9,7 +9,7 @@ are not present in the artifact.
 
 Return strict JSON with this shape:
 {
-  "plain_language_summary": "10 to 100 Chinese characters or a short plain-language sentence.",
+  "plain_language_summary": "10 to 100 characters or a short plain-language sentence.",
   "page_purpose": "one sentence",
   "main_entities": ["entity"],
   "key_forms": ["form or input area"],
@@ -43,7 +43,7 @@ Return strict JSON with this shape:
     {
       "title": "short human-readable title",
       "goal": "one-sentence goal",
-      "category": "create|edit|delete|filter|search|open|navigate|export|import|auth_session|unknown",
+      "category": "create|edit|delete|filter|search",
       "priority": "P0|P1|P2|P3",
       "risk": "read_only|state_changing_safe|state_changing_destructive|session_ending|external_side_effect|unknown",
       "rough_steps": ["rough step"],
@@ -61,6 +61,7 @@ Rules:
 - Do not produce pure navigation drafts that only verify header, footer, or
   global menu links such as Home, Find Owners, Settings, or similar
   route-to-route moves already covered elsewhere.
+- Do not propose export or import workflows in this phase.
 - Do not produce `open` drafts that only click a link to another page or only
   verify that a static page is visible.
 - If the page has one clear primary form submission flow, produce at most one
@@ -76,5 +77,5 @@ Rules:
   `notes_for_human`.
 - Rough steps can stay lightweight.
 - These are draft cases for a human to refine before another web agent runs them.
-- Use only evidence visible in the page artifact and optional page summary.
+- Use only information visible in the page artifact and optional page summary.
 """.strip()

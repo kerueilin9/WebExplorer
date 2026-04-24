@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover - dependency guard
     yaml = None
 
 _VERTEX = VertexGenAIAdapter()
-_EXCLUDED_DRAFT_CATEGORIES = {"navigate", "open"}
+_EXCLUDED_DRAFT_CATEGORIES = {"navigate", "open", "export", "import", "unknown"}
 
 
 def draft_test_ideas_with_vertex(
@@ -244,11 +244,11 @@ def _normalize_page_drafts(
                 continue
             title = str(draft.get("title") or "").strip()
             goal = str(draft.get("goal") or title or "Draft test case").strip()
-            category = _normalize_enum(str(draft.get("category") or "unknown"), {"create", "edit", "delete", "filter", "search", "open", "navigate", "export", "import", "auth_session", "unknown"}, "unknown")
+            category = _normalize_enum(str(draft.get("category") or ""), {"create", "edit", "delete", "filter", "search"}, "")
             priority = _normalize_enum(str(draft.get("priority") or "P2").upper(), {"P0", "P1", "P2", "P3"}, "P2")
             risk = _normalize_enum(str(draft.get("risk") or "unknown"), {"read_only", "state_changing_safe", "state_changing_destructive", "session_ending", "external_side_effect", "unknown"}, "unknown")
             draft_id = str(draft.get("draft_id") or f"{site_name}_{_slug(category)}_{_slug(goal)}_{index:02d}")
-            if category in _EXCLUDED_DRAFT_CATEGORIES:
+            if not category or category in _EXCLUDED_DRAFT_CATEGORIES:
                 continue
             normalized.append(
                 {
