@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import time
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,17 @@ class VertexGenAIAdapter:
         self.model = model or os.getenv("VERTEX_MODEL", "gemini-2.5-flash")
         self.project = project or os.getenv("GOOGLE_CLOUD_PROJECT", "")
         self.location = location or os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+        self.max_retries = _read_int_env("VERTEX_MAX_RETRIES", default=5, minimum=1)
+        self.retry_initial_seconds = _read_float_env(
+            "VERTEX_RETRY_INITIAL_SECONDS",
+            default=2.0,
+            minimum=0.1,
+        )
+        self.retry_max_seconds = _read_float_env(
+            "VERTEX_RETRY_MAX_SECONDS",
+            default=20.0,
+            minimum=self.retry_initial_seconds,
+        )
 
     def generate_json(
         self,
@@ -55,24 +68,45 @@ class VertexGenAIAdapter:
                 f"google-genai is not installed: {exc}",
             )
 
-        try:
-            client = genai.Client(
-                vertexai=True,
-                project=self.project,
-                location=self.location,
-                http_options=types.HttpOptions(api_version="v1"),
+        client = genai.Client(
+            vertexai=True,
+            project=self.project,
+            location=self.location,
+            http_options=types.HttpOptions(api_version="v1"),
+        )
+        response = None
+        last_error: Exception | None = None
+        successful_attempt = 0
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=temperature,
+                        max_output_tokens=max_output_tokens,
+                        response_mime_type="application/json",
+                    ),
+                )
+                last_error = None
+                successful_attempt = attempt
+                break
+            except Exception as exc:  # pragma: no cover - network/service error surface
+                last_error = exc
+                if not self._is_retryable_resource_exhausted(exc) or attempt >= self.max_retries:
+                    return self._error(
+                        "vertex_request_failed",
+                        str(exc),
+                        attempts=attempt,
+                    )
+                time.sleep(self._retry_delay(attempt))
+
+        if response is None:
+            return self._error(
+                "vertex_request_failed",
+                str(last_error or "Vertex request failed."),
+                attempts=self.max_retries,
             )
-            response = client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=temperature,
-                    max_output_tokens=max_output_tokens,
-                    response_mime_type="application/json",
-                ),
-            )
-        except Exception as exc:  # pragma: no cover - network/service error surface
-            return self._error("vertex_request_failed", str(exc))
 
         raw_text = getattr(response, "text", "") or ""
         try:
@@ -94,10 +128,49 @@ class VertexGenAIAdapter:
             "model": self.model,
             "project": self.project,
             "location": self.location,
+            "attempts": successful_attempt or 1,
             "data": parsed,
             "raw_text": raw_text,
         }
 
+    def _retry_delay(self, attempt: int) -> float:
+        base_delay = min(
+            self.retry_max_seconds,
+            self.retry_initial_seconds * (2 ** max(attempt - 1, 0)),
+        )
+        jitter = random.uniform(0.0, min(1.0, base_delay * 0.25))
+        return min(self.retry_max_seconds, base_delay + jitter)
+
+    @staticmethod
+    def _is_retryable_resource_exhausted(exc: Exception) -> bool:
+        status_code = getattr(exc, "status_code", None)
+        if status_code == 429:
+            return True
+        text = str(exc).upper()
+        return "429" in text and "RESOURCE_EXHAUSTED" in text
+
     @staticmethod
     def _error(error: str, message: str, **extra: Any) -> dict[str, Any]:
         return {"ok": False, "error": error, "message": message, **extra}
+
+
+def _read_int_env(name: str, *, default: int, minimum: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(minimum, value)
+
+
+def _read_float_env(name: str, *, default: float, minimum: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return max(minimum, value)
