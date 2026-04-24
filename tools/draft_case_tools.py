@@ -275,6 +275,7 @@ def _normalize_page_drafts(
         "route": str(route.get("canonical_path") or route.get("path") or "/"),
         "url": str(baseline.get("url") or ""),
         "title": str(baseline.get("title") or ""),
+        "navigation_steps": _string_list(route.get("navigation_steps")),
         "plain_language_summary": str(summary_payload.get("plain_language_summary") or ""),
         "drafts": normalized,
         "source_page_artifact": str(page_payload.get("_source_path") or ""),

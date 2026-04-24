@@ -142,6 +142,7 @@ def _normalize_page_summary(*, page_payload: dict[str, Any], model_payload: dict
         "route": str(route.get("canonical_path") or route.get("path") or "/"),
         "url": str(baseline.get("url") or ""),
         "title": str(baseline.get("title") or ""),
+        "navigation_steps": _string_list(route.get("navigation_steps")),
         "plain_language_summary": plain_language_summary,
         "page_purpose": str(model_payload.get("page_purpose") or "").strip(),
         "main_entities": _string_list(model_payload.get("main_entities")),

@@ -83,10 +83,16 @@ def main() -> None:
     print(json.dumps(summary_result, indent=2))
     summary_index = json.loads(Path(summary_result["summary_index_path"]).read_text(encoding="utf-8"))
     first_summary = json.loads(Path(summary_index["summaries"][0]["path"]).read_text(encoding="utf-8"))
+    summary_payloads = [
+        json.loads(Path(item["path"]).read_text(encoding="utf-8"))
+        for item in summary_index["summaries"]
+    ]
 
     assert summary_result["ok"] is True
     assert summary_result["summary_count"] == 3
     assert "plain_language_summary" in first_summary
+    assert "navigation_steps" in first_summary
+    assert any(payload["navigation_steps"] for payload in summary_payloads)
     assert 10 <= len(first_summary["plain_language_summary"]) <= 100
 
     previous_vertex = draft_case_tools._VERTEX
@@ -105,9 +111,15 @@ def main() -> None:
     print(json.dumps(draft_result, indent=2))
     draft_index = json.loads(Path(draft_result["draft_index_path"]).read_text(encoding="utf-8"))
     first_draft_page = json.loads(Path(draft_index["draft_pages"][0]["path"]).read_text(encoding="utf-8"))
+    draft_payloads = [
+        json.loads(Path(item["path"]).read_text(encoding="utf-8"))
+        for item in draft_index["draft_pages"]
+    ]
 
     assert draft_result["ok"] is True
     assert draft_result["draft_page_count"] == 3
+    assert "navigation_steps" in first_draft_page
+    assert any(payload["navigation_steps"] for payload in draft_payloads)
     assert first_draft_page["drafts"]
     assert "notes_for_human" in first_draft_page["drafts"][0]
 
