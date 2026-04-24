@@ -186,10 +186,14 @@ It exposes:
 
 ## Project Design Docs
 
-The design and implementation planning documents live under
+The design documents live under
 [docs/adk-playwright-agent](/D:/Ker/Desktop/Document/other/GUI_test/adk_playwright_agent/docs/adk-playwright-agent).
-They are kept inside this repository so code, tool schemas, and operator
-workflow documentation can evolve together.
+They are intentionally consolidated into three files so the documented design
+stays close to the current code:
+
+- [ARCHITECTURE.md](/D:/Ker/Desktop/Document/other/GUI_test/adk_playwright_agent/docs/adk-playwright-agent/ARCHITECTURE.md)
+- [TOOLING_AND_ARTIFACTS.md](/D:/Ker/Desktop/Document/other/GUI_test/adk_playwright_agent/docs/adk-playwright-agent/TOOLING_AND_ARTIFACTS.md)
+- [ROADMAP.md](/D:/Ker/Desktop/Document/other/GUI_test/adk_playwright_agent/docs/adk-playwright-agent/ROADMAP.md)
 
 ## Guest Crawl Tool
 
