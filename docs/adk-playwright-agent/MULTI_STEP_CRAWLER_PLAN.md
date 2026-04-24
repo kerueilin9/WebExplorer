@@ -1,6 +1,6 @@
 # Multi-Step Web Crawler Plan
 
-This document defines the plan, architecture, and workflow for evolving the ADK Playwright agent from a shallow home-page link collector into a multi-step crawler that can explore a web application through real browser navigation, generate route-level navigation tasks, and generate page-action workflow tasks.
+This document defines the plan, architecture, and workflow for evolving the ADK Playwright agent from a shallow home-page link collector into a multi-step crawler that can explore a web application through real browser navigation, generate route-level navigation tasks, and generate page-level summaries plus draft workflow cases.
 
 ## Objective
 
@@ -13,15 +13,17 @@ The crawler must not only inspect links visible on the home page. It must be abl
 - distinguish guest, signed-in, and admin areas
 - identify overlay workflows that do not create a new URL
 - produce a route manifest that can drive task/test generation
-- inspect discovered routes for workflow intents such as create/edit/search
-- generate action tasks such as `Create Employee` when a matching page is found
+- inspect discovered routes as live pages and let Vertex propose page summaries and workflow draft cases
+- stop at a human-reviewable draft backlog for downstream execution systems
 
 The execution target is route-first generation:
 
 1. Crawl and produce a stable route manifest.
 2. Generate navigation tasks from the route manifest.
 3. Revisit canonical routes with `playwright-cli` and produce browser-backed action evidence.
-4. Generate action tasks from the action intent catalog.
+4. Summarize each observed page with Vertex.
+5. Draft page-level cases from full-page observations plus summaries.
+6. Consolidate drafts into a prioritized backlog for human refinement.
 
 ## Skillized Operator Entry
 
@@ -85,9 +87,10 @@ flowchart TD
   M --> O["route_manifest.json"]
   O --> X["Navigation Task Generator"]
   O --> W["Canonical Action Worklist"]
-  W --> I["Browser-Backed Action Discovery Agent"]
-  I --> J["action evidence / action_intents.json"]
-  J --> T["Action Task Generator"]
+  W --> I["Browser Page Observations"]
+  I --> J["Vertex Page Summaries"]
+  J --> K["Vertex Page Drafts"]
+  K --> T["Draft Backlog For Human Review"]
 ```
 
 ## Main Components
@@ -194,10 +197,11 @@ that canonical path can produce action tasks.
 
 Writes a JSON manifest that becomes the single source of truth for later task/test generation.
 
-### 7. Browser-Backed Action Discovery
+### 7. Browser-Backed Page Observation
 
 Uses `playwright-cli` to open each canonical accepted route and collect workflow
-intents from the live page.
+evidence from the live page. The tool should not decide what page actions exist;
+that semantic judgment belongs to the LLM task author.
 
 Examples:
 
@@ -205,19 +209,22 @@ Examples:
 - `edit employee` on `/users/edit/:id`
 - `search employees` on `/users`
 
-The browser-backed pass should return structured evidence and intent metadata,
-not only free-form text. Static manifest scanning can be used only as a cheap
-prefilter; it is not sufficient for generating final action tasks.
+The browser-backed pass should return structured observations: visible text,
+headings, forms, controls, tables, snapshot paths, and route provenance. Static
+manifest scanning can be used only for route worklist construction; it is not
+sufficient for generating page summaries or draft cases.
 
-### 8. Action Task Generator
+### 8. Draft Backlog Generator
 
-Converts action intents into workflow test tasks.
+Vertex reads page observations and produces page summaries plus page draft
+files. Tools then deduplicate those drafts, normalize category/risk/priority,
+and assign a review-oriented backlog.
 
 Examples:
 
 - `Navigate to Employees` (route-level)
-- `Create Employee` (action-level)
-- `Edit Employee` (action-level)
+- `Create Employee` (draft-level)
+- `Edit Employee` (draft-level)
 
 ## Context and Memory Architecture
 
@@ -479,10 +486,10 @@ Strategy:
 4. Record an overlay workflow route with `validation_mode: "ui_evidence"`.
 5. Do not submit the form.
 
-### Phase 5. Browser-Backed Route-to-Action Discovery
+### Phase 5. Browser-Backed Route Observation
 
 After route crawling is stable, inspect each canonical accepted route for
-workflow intents by opening the route in a live `playwright-cli` browser session.
+task opportunities by opening the route in a live `playwright-cli` browser session.
 Do not generate action tasks from static manifest metadata alone.
 
 Steps:
@@ -491,18 +498,19 @@ Steps:
 2. Fold query-string variants into their queryless canonical path.
 3. Open each canonical route in deterministic order.
 4. Capture snapshot, headings, forms, tables/lists, and primary controls.
-5. Let the action-discovery agent reason over the live page evidence.
-6. Click only safe reveal controls such as menus, tabs, drawers, and non-submitting modal openers.
-7. Classify intents (`create`, `edit`, `search`, `filter`, `open_details`, etc.).
-8. Record intent evidence, required inputs, attempted safe clicks, blocked actions, and safety level.
-9. Write per-route discovery evidence and `action_intents.json`.
+5. Write per-route observation files without pre-classifying actions.
+6. Summarize the page in plain language and structured fields.
+7. Let Vertex inspect the full-page observations and propose draft cases.
+8. Include draft category, risk, priority, rough steps, evidence, and notes for human refinement.
+9. Preserve destructive/session-ending ideas as deferred drafts rather than executing them immediately.
 
 Expected output:
 
 - canonical action worklist
-- per-route browser evidence files
-- route-to-intent mapping
-- reusable action catalog for task generation
+- per-route browser observation files
+- Vertex-authored `page_summaries.index.json`
+- Vertex-authored `page_drafts.index.json`
+- prioritized `draft_backlog.json`
 
 Query-string example:
 
@@ -512,24 +520,24 @@ Query-string example:
 ```
 
 Only `/calendar/teamview` enters action discovery. The query-string route is
-recorded as a folded variant and must not generate a separate action task.
+recorded as a folded variant and must not generate a separate draft page.
 
-### Phase 6. Action Task Generation
+### Phase 6. Human Review and Downstream Execution Handoff
 
-Convert action intents into workflow tasks.
+Prepare the draft backlog for human review and later execution in a downstream
+web agent.
 
 Steps:
 
-1. Read `action_intents.json`.
-2. Generate one action task per accepted intent.
-3. Include form steps and expected outcomes.
-4. Preserve login metadata and route provenance.
-5. Validate output structure.
+1. Read `draft_backlog.json`.
+2. Review create/edit/delete drafts first because they have the highest coverage value.
+3. Use page summaries and evidence to refine titles, goals, and rough steps.
+4. Hand reviewed drafts to a downstream execution system such as AgentOccam.
 
 Expected output:
 
-- `task_*.json` entries for workflow actions
-- examples: `Create Employee`, `Edit Employee`, `Search Employees`
+- `draft_backlog.json`
+- page summary and page draft artifacts linked back to evidence
 
 ## Manifest Schema
 
@@ -626,26 +634,44 @@ Overlay workflows should use the same manifest but a different validation mode:
 }
 ```
 
-## Action Intent Record Schema
+## Page Summary Schema
 
-Action intents should be stored as structured records:
+Page summaries are authored by Vertex from page observations and should help a
+human quickly understand what the page is for:
 
 ```json
 {
-  "intent_id": "timeoff_create_employee_users_add",
-  "route_id": "timeoff_authenticated_account_users_add",
-  "intent_type": "create",
-  "entity": "employee",
-  "entry_path": "/users/add",
-  "phase": "authenticated",
-  "require_login": true,
-  "fields": ["firstname", "lastname", "email"],
-  "submit_label": "Create",
-  "success_assertions": [
-    "The employee list should include the new employee",
-    "A success message should be visible"
-  ],
-  "safety_level": "safe_with_confirmation"
+  "page_id": "page-001",
+  "route": "/users/add",
+  "plain_language_summary": "這頁主要是新增員工資料的表單頁面。",
+  "page_purpose": "Create a new employee record",
+  "main_entities": ["employee"],
+  "key_actions": ["create employee", "cancel"],
+  "risk_notes": ["submitting changes application state"]
+}
+```
+
+## Page Draft Schema
+
+Page drafts are authored by Vertex from page observations. They may be light,
+but they must stay grounded in observed evidence:
+
+```json
+{
+  "page_id": "page-001",
+  "route": "/users/add",
+  "drafts": [
+    {
+      "draft_id": "timeoff_users_add_create_employee",
+      "goal": "建立新員工資料",
+      "category": "create",
+      "risk": "state_changing_safe",
+      "priority": "P0",
+      "rough_steps": ["Open Add employee.", "Fill visible required fields.", "Submit the form."],
+      "evidence": ["The page shows an Add employee heading and employee form fields."],
+      "notes_for_human": ["Need disposable employee test data."]
+    }
+  ]
 }
 ```
 
@@ -835,32 +861,34 @@ Acceptance:
 - generated tasks preserve navigation path from home
 - task validation passes
 
-### Milestone 6. Browser-Backed Route-to-Action Discovery
+### Milestone 6. Browser-Backed Route Observation
 
 Deliverables:
 
 - canonical action route worklist
-- route action browser exploration pass
-- per-route evidence artifacts
-- action intent catalog (`action_intents.json`)
+- route observation browser pass
+- per-route observation artifacts
+- Vertex-authored page summaries
+- Vertex-authored page drafts
 
 Acceptance:
 
-- create/edit/search intents are extracted where present from live browser evidence
-- each intent has route provenance, snapshot/DOM evidence, and safety classification
+- task drafts are grounded in live browser observations
+- each summary has `plain_language_summary`
+- each draft has route provenance, evidence, category, risk, and priority when possible
 - query-string variants are folded into canonical paths and skipped for separate task generation
 
-### Milestone 7. Action Task Generation
+### Milestone 7. Draft Backlog Handoff
 
 Deliverables:
 
-- action task generator consumes action intent catalog
-- one workflow task per accepted action intent
+- prioritized draft backlog from page drafts
+- human-reviewable summary and evidence links
 
 Acceptance:
 
-- `Create Employee` style tasks are generated when matching forms exist
-- action task validation passes
+- `Create Employee` style drafts are visible in the backlog when the workflow is observed
+- the backlog is ready for downstream execution systems without pretending to be final
 
 ### Milestone 8. Skillized Manifest-First Workflow
 
@@ -886,8 +914,8 @@ Acceptance:
 
 If route crawl and navigation task generation are already stable, implement Milestone 6 next:
 
-> Browser-backed route-to-action discovery with a canonical route worklist and bounded per-route safe-click exploration.
+> Browser-backed route observation with a canonical route worklist, bounded per-route safe-click exploration, Vertex page summaries, and Vertex draft-case ideation.
 
-After Milestone 6 is stable, implement Milestone 7 for workflow task generation.
+After Milestone 6 is stable, implement Milestone 7 for backlog handoff quality.
 
 After Milestone 7 is stable, package Milestone 1-7 as a reusable skill entrypoint.

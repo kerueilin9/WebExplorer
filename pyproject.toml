@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "google-adk>=1.31.0,<2.0",
+  "google-genai>=1.22.0,<2.0",
+  "PyYAML>=6.0.2,<7.0",
+  "python-dotenv>=1.0.1,<2.0",
 ]
 
 [build-system]

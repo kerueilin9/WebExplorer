@@ -30,7 +30,7 @@ The agent should resolve saved defaults and call the correct workflow tool
 without requiring repeated parameter lists.
 
 The same profile should also support longer, explicit requests for other tasks,
-for example action-review or direct crawl/generation tools.
+for example page-summary / draft-case generation or direct crawl tools.
 
 ## Design Overview
 
@@ -127,13 +127,14 @@ Suggested shape:
             "skip_invalid_query_routes": true
           }
         },
-        "action_review": {
-          "tool": "run_action_review_task_workflow",
+        "action_tasks": {
+          "tool": "action-review-task-workflow",
           "params": {
-            "require_review": true,
-            "generate_tasks": true,
-            "validate_outputs": true,
-            "clear_existing": true
+            "build_worklist": true,
+            "observe_pages": true,
+            "summarize_pages": true,
+            "draft_page_cases": true,
+            "merge_backlog": true
           }
         }
       },
@@ -143,7 +144,7 @@ Suggested shape:
             "same_origin_only": true
           }
         },
-        "discover_page_actions_from_worklist": {
+        "observe_task_pages_from_worklist": {
           "params": {
             "max_controls_per_route": 80
           }
@@ -196,7 +197,7 @@ Examples that should map correctly:
 - generate timeoff navigation tests
 - run timeoff route navigation generation
 - 幫我生成 timeoff 的 navigation 測試
-- 幫我對 timeoff 做 action review 任務
+- 幫我對 timeoff 生成 draft case backlog
 
 Expected tool target:
 
@@ -264,7 +265,7 @@ Implementation direction for this section:
 This design is successful when all are true:
 
 - operator can invoke common runs with short prompts without listing repeated params
-- profile defaults are reusable across navigation, action-review, and direct tool runs
+- profile defaults are reusable across navigation, draft-case generation, and direct tool runs
 - resolved params are deterministic and auditable
 - missing profile data causes at most one focused clarification question
 - final workflow output matches manually parameterized runs

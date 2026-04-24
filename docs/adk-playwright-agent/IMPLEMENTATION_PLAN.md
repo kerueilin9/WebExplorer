@@ -63,8 +63,10 @@ Responsibilities:
 Responsibilities:
 
 - map each accepted route into a navigation task (`Navigate to ...`)
-- revisit canonical accepted routes with `playwright-cli` and infer page actions from live UI evidence
-- map inferred actions into workflow tasks (`Create Employee`, etc.)
+- revisit canonical accepted routes with `playwright-cli` and capture full-page observations
+- summarize each observed page with Vertex AI
+- draft page-level test ideas from observed evidence
+- merge and dedupe page drafts into a prioritized backlog
 - preserve project conventions
 - include login metadata when needed
 
@@ -136,39 +138,45 @@ Exit criteria:
 - tasks are structurally valid
 - each task contains navigation steps from the chosen home page
 
-### Phase 5. Action intent discovery
+### Phase 5. Browser-backed page observation, summary, and draft discovery
 
 Use browser-backed exploration to inspect each canonical accepted route for
-workflow intents that can become test cases. This phase must not rely only on
-static route manifest metadata.
+workflow opportunities. This phase must not rely only on static route manifest
+metadata, and tools must not pre-classify controls into final actions. The
+system writes full-page observations, then Vertex generates per-page summaries
+and per-page draft cases.
 
 Deliverables:
 
 - canonical action route worklist with query-string variants folded into their base path
-- per-route browser exploration evidence
-- action intent catalog
-- route-to-intent mapping
-- safety classification for each intent
+- per-route browser observations as `page-*.yml`
+- Vertex-authored `page-*.summary.json`
+- Vertex-authored `page-*.drafts.json`
+- prioritized `draft_backlog.json` with dedupe, risk, priority, and execution order
 
 Exit criteria:
 
-- create/edit/search/filter intents are detected from live page evidence when present
-- each intent includes snapshot/DOM evidence sufficient to generate deterministic tasks
+- create/edit/delete/search/filter/open drafts are grounded in live page evidence when present
+- each page summary includes a short `plain_language_summary` plus structured page metadata
+- each draft includes route provenance and evidence sufficient for later human refinement
 - routes such as `/calendar/teamview?department=1&date=2026-03` are folded into `/calendar/teamview` and not explored or generated separately
 
-### Phase 6. Action task generation
+### Phase 6. Human Review and Downstream Execution Handoff
 
-Generate workflow tasks from the action intent catalog.
+Stop at the draft backlog and prepare the artifacts for a downstream execution
+agent such as AgentOccam.
 
 Deliverables:
 
-- generated action tasks (`Create Employee`, `Edit Employee`, etc.)
-- validation summary for action tasks
+- human-reviewable `draft_backlog.json`
+- per-page summaries and per-page draft files
+- clear evidence links back to the underlying page observations
 
 Exit criteria:
 
-- generated action tasks are structurally valid
-- tasks include concrete action steps and post-submit assertions
+- the draft backlog is structurally valid
+- operators can quickly understand each page via `plain_language_summary`
+- downstream execution systems receive an evidence-backed draft inventory rather than guessed final tasks
 
 ### Phase 7. Skill Packaging and Runtime Wiring
 
@@ -249,11 +257,11 @@ The MVP should be considered done when all of the following are true:
 The expanded target should be considered done when all of the following are true:
 
 - the agent uses `playwright-cli` to inspect each canonical accepted route for page-level workflows
-- the agent generates action tasks for detected safe workflows
-- create flows generate create-style tasks (for example, `Create Employee`)
-- action tasks include form inputs, submit actions, and success assertions
-- destructive or high-risk submits require explicit confirmation policy
-- query-string variants are skipped or folded and do not produce separate action tasks
+- the agent writes one observation artifact per canonical route
+- the agent writes one page summary per observed page, including `plain_language_summary`
+- the agent writes page-level draft cases for detected workflows
+- create/edit/delete drafts are prioritized above filter/search/open when present
+- query-string variants are skipped or folded and do not produce separate draft pages
 
 ## Expanded Acceptance Criteria (Skillized Workflows)
 

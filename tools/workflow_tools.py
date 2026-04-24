@@ -13,12 +13,7 @@ from adk_playwright_agent.tools.crawler_tools import (
     crawl_site_to_manifest,
 )
 from adk_playwright_agent.tools.generator_tools import (
-    generate_action_tasks_from_intents,
     generate_tasks_from_manifest,
-)
-from adk_playwright_agent.tools.intent_tools import (
-    prepare_action_intent_review_packets,
-    write_reviewed_action_intents,
 )
 from adk_playwright_agent.tools.validation_tools import validate_task_directory
 
@@ -239,170 +234,6 @@ def run_manifest_first_route_workflow(
     summary["total_generated_count"] = (
         summary["guest_generated_count"] + summary["auth_generated_count"]
     )
-    result["ok"] = not result["issues"]
-    return result
-
-
-def run_action_review_task_workflow(
-    intents_path: str,
-    site_name: str | None = None,
-    output_root: str | None = None,
-    storage_state_path: str | None = None,
-    start_url: str | None = None,
-    task_id_prefix: str | None = None,
-    reviewed_intents_path: str | None = None,
-    reviewed_intents_json: str | None = None,
-    reviewer_name: str = "llm_action_reviewer",
-    require_review: bool = True,
-    generate_tasks: bool = True,
-    validate_outputs: bool = True,
-    clear_existing: bool = True,
-    max_tasks: int | None = None,
-    max_intents_per_packet: int = 8,
-    max_controls_per_packet: int = 30,
-    max_forms_per_packet: int = 20,
-) -> dict[str, Any]:
-    """Prepare LLM review packets and optionally generate action tasks from reviewed intents."""
-
-    source_intents = resolve_workspace_path(intents_path)
-    root = resolve_workspace_path(output_root) if output_root else source_intents.parent
-    root.mkdir(parents=True, exist_ok=True)
-
-    normalized_site_name = _slug(site_name or _site_name_from_intents(source_intents))
-    review_packet_dir = root / "action_review_packets"
-    reviewed_output_path = Path(reviewed_intents_path) if reviewed_intents_path else root / "action_intents.reviewed.generic.json"
-    if not reviewed_output_path.is_absolute():
-        reviewed_output_path = root / reviewed_output_path
-    action_task_dir = root / "generated_tasks" / "actions"
-
-    result: dict[str, Any] = {
-        "ok": True,
-        "site_name": normalized_site_name,
-        "intents_path": str(source_intents),
-        "output_root": str(root),
-        "phases": {},
-        "summary": {
-            "review_packet_count": 0,
-            "reviewed_intent_count": 0,
-            "action_generated_count": 0,
-            "action_valid_files": 0,
-            "validation_issue_count": 0,
-            "needs_review": False,
-        },
-        "issues": [],
-    }
-
-    review_packets = prepare_action_intent_review_packets(
-        intents_path=str(source_intents),
-        output_dir=str(review_packet_dir),
-        max_intents_per_packet=max_intents_per_packet,
-        max_controls_per_packet=max_controls_per_packet,
-        max_forms_per_packet=max_forms_per_packet,
-        clear_existing=clear_existing,
-    )
-    result["phases"]["review_packets"] = review_packets
-    result["summary"]["review_packet_count"] = int(review_packets.get("packet_count") or 0)
-    if review_packets.get("ok") is False:
-        result["issues"].append(
-            {
-                "phase": "review_packets",
-                "type": str(review_packets.get("error") or "review_packets_failed"),
-                "message": str(review_packets.get("message") or "Failed to prepare review packets."),
-            }
-        )
-
-    task_source_path = str(source_intents)
-    if reviewed_intents_json:
-        reviewed = write_reviewed_action_intents(
-            source_intents_path=str(source_intents),
-            reviewed_intents_json=reviewed_intents_json,
-            output_path=str(reviewed_output_path),
-            reviewer_name=reviewer_name,
-        )
-        result["phases"]["reviewed_intents"] = reviewed
-        result["summary"]["reviewed_intent_count"] = int(reviewed.get("reviewed_intent_count") or 0)
-        if reviewed.get("ok", True):
-            task_source_path = str(reviewed_output_path)
-        else:
-            result["issues"].append(
-                {
-                    "phase": "reviewed_intents",
-                    "type": str(reviewed.get("error") or "reviewed_intents_failed"),
-                    "message": str(reviewed.get("message") or "Failed to produce reviewed intents."),
-                }
-            )
-    elif reviewed_intents_path:
-        reviewed_file = resolve_workspace_path(reviewed_intents_path)
-        result["phases"]["reviewed_intents"] = {
-            "ok": reviewed_file.exists(),
-            "path": str(reviewed_file),
-            "source": "existing_file",
-        }
-        if not reviewed_file.exists():
-            result["issues"].append(
-                {
-                    "phase": "reviewed_intents",
-                    "type": "missing_reviewed_intents",
-                    "path": str(reviewed_file),
-                }
-            )
-        task_source_path = str(reviewed_file)
-    elif require_review:
-        result["summary"]["needs_review"] = True
-        result["phases"]["reviewed_intents"] = {
-            "skipped": True,
-            "reason": "review_required",
-            "instruction": "Review packets, then call write_reviewed_action_intents or rerun with reviewed_intents_json.",
-        }
-        generate_tasks = False
-    else:
-        result["phases"]["reviewed_intents"] = {
-            "skipped": True,
-            "reason": "review_not_required",
-            "task_source_path": task_source_path,
-        }
-
-    if generate_tasks and not result["issues"]:
-        generation = generate_action_tasks_from_intents(
-            intents_path=task_source_path,
-            output_dir=str(action_task_dir),
-            site_name=normalized_site_name,
-            start_url=start_url,
-            storage_state_path=storage_state_path,
-            task_id_prefix=task_id_prefix or f"{normalized_site_name}_action",
-            clear_existing=clear_existing,
-            max_tasks=max_tasks,
-        )
-        result["phases"]["action_tasks"] = generation
-        result["summary"]["action_generated_count"] = int(generation.get("generated_count") or 0)
-        if generation.get("ok") is False:
-            result["issues"].append(
-                {
-                    "phase": "action_tasks",
-                    "type": str(generation.get("error") or "action_generation_failed"),
-                    "message": str(generation.get("message") or "Failed to generate action tasks."),
-                }
-            )
-
-        if validate_outputs and generation.get("ok") is not False:
-            validation = validate_task_directory(
-                directory=str(action_task_dir),
-                expected_start_url=start_url,
-            )
-            result["phases"]["validation"] = validation
-            result["summary"]["action_valid_files"] = int(validation.get("valid_files") or 0)
-            result["summary"]["validation_issue_count"] = len(validation.get("issues", []))
-            for issue in validation.get("issues", []):
-                result["issues"].append(
-                    {
-                        "phase": "action_tasks",
-                        "type": "validation_issue",
-                        **issue,
-                    }
-                )
-    elif not generate_tasks:
-        result["phases"]["action_tasks"] = {"skipped": True, "reason": "generate_tasks_false_or_needs_review"}
-
     result["ok"] = not result["issues"]
     return result
 
@@ -756,16 +587,6 @@ def _site_name_from_url(url: str) -> str:
     host = re.sub(r"^https?://", "", url.strip(), flags=re.IGNORECASE).split("/")[0]
     host = host.split(":")[0]
     return host or "webapp"
-
-
-def _site_name_from_intents(path: Path) -> str:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return path.parent.name or "webapp"
-    if isinstance(payload, dict) and payload.get("site_name"):
-        return str(payload["site_name"])
-    return path.parent.name or "webapp"
 
 
 def _route_key(route: dict[str, Any]) -> str:

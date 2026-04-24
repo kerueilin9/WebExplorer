@@ -15,10 +15,10 @@ The target design is a browser-backed discovery pass:
 2. Normalize routes into a canonical route worklist.
 3. Open each canonical route with `playwright-cli`.
 4. Capture snapshot, visible DOM summary, headings, forms, and safe controls.
-5. Let an action-discovery agent reason from the actual page evidence.
-6. Open safe non-submitting UI such as menus, drawers, and create/edit dialogs.
-7. Write evidence-backed action task drafts or an intermediate action catalog.
-8. Validate generated tasks against the captured evidence.
+5. Write full-page observation artifacts such as `page-*.yml`.
+6. Send each observed page artifact to Vertex for page summarization.
+7. Send each observed page artifact plus summary to Vertex for draft case ideation.
+8. Merge and dedupe page drafts into a prioritized draft backlog for human review.
 
 This keeps route crawling deterministic while allowing workflow task authoring to
 use the same visual/browser reasoning expected from a human test author.
@@ -59,10 +59,10 @@ Responsibilities:
 
 - open a canonical route in a headed persistent `playwright-cli` session
 - inspect the live page using snapshots and structured DOM summaries
-- identify safe page workflows such as search, filter, create-entry, edit-entry, open-details, and non-submitting modal entrypoints
+- capture evidence-rich page artifacts rather than pre-deciding actions too early
 - click only safe controls needed to reveal workflow UI
 - avoid submit, save, delete, approve, reject, import, upload, or signout actions unless an explicit policy allows them
-- produce an evidence record and task draft for each accepted workflow
+- produce an evidence record that a separate summarization / draft ideation phase can consume
 
 This can be implemented as a second ADK agent/sub-agent when the workflow becomes
 tool-rich. For the first implementation, it can also be a dedicated subflow in
@@ -148,17 +148,15 @@ For each canonical route:
 8. Generate task drafts only from observed evidence.
 9. Return to the route baseline before exploring the next control.
 
-Implemented baseline behavior:
+Implemented behavior:
 
 - `build_action_discovery_worklist` folds query-string variants into one canonical route per path.
-- `discover_page_actions_from_worklist` opens each canonical route, captures DOM evidence, and writes action-intent drafts.
-- Repeated global controls are emitted once and skipped as `global_duplicate` on later routes.
-- Browser controls already covered by stronger route/form evidence are skipped as `covered_by_route_intent` or `covered_by_form_intent`.
-- Authenticated routes that land on a login page are skipped as `auth_redirect_detected` instead of producing false guest-page intents.
-- `prepare_action_intent_review_packets` creates route-scoped evidence packets for LLM semantic review.
-- `write_reviewed_action_intents` writes constrained LLM review decisions back to an intent file without allowing invented intent IDs.
-- `generate_action_tasks_from_intents` converts accepted browser-backed intents into complete action tasks. Create/edit intents without reviewed `workflow_steps` and `commit_policy` are skipped; with those reviewed fields it generates executable form-fill/submit tasks.
-- Action task generation skips low-value labels and controls already covered by a target route intent.
+- `observe_task_pages_from_worklist` opens each canonical route and writes `page-*.yml` observations with visible text, headings, controls, forms, tables, snapshot paths, and route provenance.
+- Authenticated routes that land on a login page are marked as `auth_redirect_detected` instead of producing false guest-page evidence.
+- `summarize_pages_with_vertex` generates one `page-*.summary.json` file per observed page, including a short `plain_language_summary`.
+- `draft_test_ideas_with_vertex` generates one `page-*.drafts.json` file per observed page.
+- `merge_page_drafts` dedupes page drafts, classifies category/risk/priority, and writes `draft_backlog.json`.
+- The workflow stops at the draft backlog. Final executable action tasks belong to a downstream system.
 
 Hard stop conditions:
 
@@ -192,56 +190,75 @@ Blocked by default:
 
 ## Outputs
 
-The browser-backed phase should produce evidence before final task files.
+The Vertex-backed phase should produce observations, page summaries, page
+drafts, and a prioritized backlog before any downstream execution.
 
 Recommended artifacts:
 
 ```text
 <output_root>/
   action_worklist.auth.generic.json
-  action_discovery/
-    route_<route_id>.json
-    snapshots/
-      <route_id>__baseline.json
-      <route_id>__after_create_click.json
-  action_review_packets/
-    review_index.json
-    packet_<route_id>.json
-  action_intents.reviewed.auth.generic.json
-  generated_tasks/
-    actions/
-      task_<site>_action_001_<intent>.json
+  page_observations.index.json
+  page_observations/
+    page-001-<route>.yml
+  page_summaries.index.json
+  page_summaries/
+    page-001.summary.json
+  page_drafts.index.json
+  page_drafts/
+    page-001.drafts.json
+  draft_backlog.json
 ```
 
-`route_<route_id>.json` should include:
+`page-*.yml` should include:
 
 - route provenance
 - canonical path
 - folded query variants
 - baseline heading/title
 - observed controls
-- safe clicks attempted
-- blocked clicks with reasons
-- generated task drafts
+- visible page text
+- visible forms and field labels
+- visible tables/list summaries
 - evidence snapshot paths
+- `page_id`
 
-Task files should reference only workflows that were actually observed through
-browser exploration. Create/edit action tasks require reviewed executable
-workflow fields; incomplete reviewed intents are skipped instead of converted
-into partial placeholder tasks. A reviewed intent can opt into executable task
-generation by providing `workflow_steps`, `test_data`, `success_evidence`, and
-`commit_policy`, all grounded in the packet evidence.
+`page-*.summary.json` should include:
+
+- `plain_language_summary` in natural language
+- page purpose
+- main entities
+- key forms
+- key actions
+- likely user goals
+- risk notes
+- evidence highlights
+
+`page-*.drafts.json` should include:
+
+- page-level candidate test cases
+- category, risk, and priority
+- rough steps
+- evidence
+- notes for human refinement
+
+Draft backlog items are not final task files. They are an operator-facing,
+human-reviewable inventory for downstream execution systems such as AgentOccam.
+
+The backlog should keep priority separate from execution order. Create/edit and
+delete can be high-priority coverage targets, but destructive delete should run
+last and only as a dry-run confirmation or against disposable test data.
 
 ## Task Authoring Rules
 
-Action tasks must be grounded in page evidence:
+Draft cases must be grounded in page evidence:
 
 - scenario name comes from visible UI intent, not just URL tokens
 - steps must replay from home page or stored auth state to the route
 - form field names should come from visible labels, placeholders, names, or aria labels
 - assertions should prefer visible headings, modal titles, field labels, table/list text, or success UI evidence
 - query-string variants must not produce separate action tasks
-- unsafe or ambiguous actions should be recorded as skipped, not generated
+- unsafe or ambiguous actions should be recorded as skipped or low-confidence drafts, not promoted into executable tasks here
 
 For non-submitting modal entrypoints, generate a task such as:
 
@@ -249,34 +266,29 @@ For non-submitting modal entrypoints, generate a task such as:
 Open Create Employee dialog
 ```
 
-Do not generate:
-
-```text
-Create Employee
-```
-
-unless the LLM review explicitly provides evidence-backed executable
-`workflow_steps` and a safe `commit_policy`.
+Do not claim the workflow is fully executable unless a later downstream system
+proves it. This stage only drafts the case.
 
 ## Interaction With Navigation Tasks
 
 Route-level navigation task generation remains manifest-driven and deterministic.
 
-Action task generation becomes browser-backed:
+Action draft generation becomes Vertex-backed and tool-governed:
 
 ```text
-manifest -> canonical route worklist -> browser action discovery -> evidence -> optional LLM review -> action tasks
+manifest -> canonical route worklist -> page observations -> page summaries -> page drafts -> draft backlog
 ```
 
 This prevents the static route manifest from pretending to know page workflows it
-has not actually observed.
+has not actually observed, while also preventing heuristic tools from deciding
+too early what the page actions mean.
 
 ## Recommended Skill Split
 
 Keep the existing `manifest-first-route-workflow` skill focused on route crawl
 and navigation task generation.
 
-Use a second skill for browser-backed action review and task generation:
+Use a second skill for browser-backed action review and draft-case generation:
 
 ```text
 action-review-task-workflow
@@ -285,9 +297,9 @@ action-review-task-workflow
 Suggested prompt:
 
 ```text
-Run the action-review-task-workflow skill for <output_root>/action_intents.browser.auth.generic.json.
-Use site_name <sut_name>, output_root <output_root>, storage_state_path <state_path>,
-and start_url <start_url>. First create review packets and stop for review.
+Run the action-review-task-workflow skill for <sut_name>.
+Use worklist_path <output_root>/action_worklist.auth.generic.json, output_root <output_root>, storage_state_path <state_path>,
+and start_url <start_url>. First observe pages, summarize each page with Vertex, write page-level draft cases, and merge a prioritized draft backlog. Do not generate final executable action tasks in this workflow.
 ```
 
 This split keeps route coverage and action workflow authoring independently

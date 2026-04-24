@@ -17,6 +17,7 @@ class CommandResult:
     url: str | None = None
     title: str | None = None
     snapshot_path: str | None = None
+    snapshot_content: str | None = None
     raw_value: Any | None = None
 
     @property

@@ -28,17 +28,17 @@ Rules:
 - Never store raw passwords in long-lived state, manifests, or generated tasks.
 - For manifest-first crawling, prefer the crawl_site_to_manifest tool over manually chaining low-level link collection calls.
 - For full guest/auth crawl -> task generation -> validation runs, prefer run_manifest_first_route_workflow over manually chaining crawl/generate/validate tools.
-- For action review packet -> reviewed intent -> action task generation -> validation runs, prefer run_action_review_task_workflow over manually chaining review/generate/validate tools.
+- For SUT understanding and draft test ideation, prefer the Vertex-backed path: build_action_discovery_worklist -> observe_task_pages_from_worklist -> summarize_pages_with_vertex -> draft_test_ideas_with_vertex -> merge_page_drafts.
 - For signed-in coverage, use crawl_authenticated_site_to_manifest and write a separate authenticated manifest instead of overwriting the guest manifest.
 - In manifest-first workflows, do not assume the login route is `/login`; let the workflow discover login/sign-in routes from the guest manifest unless the user explicitly provides `login_path`.
 - After manifests are stable, prefer generate_tasks_from_manifest for batch task JSON generation.
-- Before browser-backed page workflow discovery, use build_action_discovery_worklist to canonicalize routes and fold query-string variants.
-- Use discover_page_actions_from_worklist to collect browser-backed per-route evidence before generating action-level task files.
-- When semantic quality matters, use prepare_action_intent_review_packets and review the route-scoped evidence as an LLM before writing reviewed intents with write_reviewed_action_intents.
-- Use generate_action_tasks_from_intents only after browser-backed action evidence exists; do not generate action tasks directly from static route metadata.
-- Treat extract_action_intents_from_manifest as a static prototype only; final action tasks should come from browser-backed evidence, not static manifest metadata alone.
-- During LLM review, stay generic: do not use SUT-specific assumptions, and never invent controls, fields, routes, or assertions that are absent from the evidence packet.
-- When the user wants real executable action tasks, reviewed intents may include workflow_steps, test_data, success_evidence, and commit_policy so create/edit tasks can fill and submit safe test workflows. Do not include destructive, session-ending, payment, import/export, or irreversible commit steps.
+- Before LLM-first action task discovery, use build_action_discovery_worklist only to canonicalize routes and fold query-string variants; do not use this step to decide page actions.
+- Use observe_task_pages_from_worklist to collect per-route observations and write `page-*.yml` artifacts. The observations are evidence, not pre-classified action records.
+- Use summarize_pages_with_vertex to generate a human-friendly summary for each observed page before ideating tests.
+- Use draft_test_ideas_with_vertex to generate per-page draft cases for human review. Favor recall and visible evidence over polish.
+- Use merge_page_drafts to combine page drafts into one deduped draft backlog for human refinement and downstream execution by another web agent.
+- Keep priority separate from execution order: create/edit/delete may be high priority, but destructive delete runs last and only as dry-run confirmation or against disposable test data.
+- This system currently stops at draft cases. Do not try to generate final executable action tasks here.
 - Treat every target as a generic SUT unless the user explicitly supplies project-specific rules; do not assume product-specific routes, labels, or page types.
 
 Preferred workflow:
@@ -52,6 +52,6 @@ Preferred workflow:
 8. If credentials exist, use crawl_authenticated_site_to_manifest and save storage state.
 9. Discover additional signed-in routes into a separate manifest.
 10. Write a route manifest before generating final task files.
-11. Build action discovery worklists, collect browser-backed action evidence, optionally use run_action_review_task_workflow for route-scoped LLM review and action task generation, and then validate generated outputs.
+11. Build action discovery worklists, observe canonical routes, summarize pages with Vertex, generate page-level draft ideas with Vertex, and merge them into a draft backlog for human review.
 12. Validate generated outputs before concluding.
 """.strip()

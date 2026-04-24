@@ -45,7 +45,11 @@ Important settings:
 - `AGENT_WORKSPACE_ROOT`
 - `PLAYWRIGHT_CLI_BIN`
 - `DEFAULT_CREDENTIALS_FILE`
-- `GOOGLE_API_KEY`
+- `GOOGLE_CLOUD_PROJECT`
+- `GOOGLE_CLOUD_LOCATION`
+- `GOOGLE_APPLICATION_CREDENTIALS`
+- `GOOGLE_GENAI_USE_VERTEXAI`
+- `VERTEX_MODEL`
 
 Credentials lookup is recoverable and tries configured paths first, then falls
 back to `AGENT_WORKSPACE_ROOT/passwords.txt`, this project directory's
@@ -134,7 +138,7 @@ Credentials error handling smoke test:
 uv run python scripts/credentials_smoke.py
 ```
 
-Action intent extraction smoke test:
+Vertex-backed draft case smoke test:
 
 ```powershell
 uv run python scripts/intent_smoke.py
@@ -280,82 +284,79 @@ Generate task JSON files from manifests/example_sut/route_manifest.auth.json int
 
 The batch generator writes `task_*.json` files, preserves the manifest navigation steps/assertions, and skips unsafe routes such as logout, delete, download, backup, export, upload, and routes with invalid query markers such as `NaN` or `undefined` unless explicitly requested.
 
-## Action Intent Extraction
+## Vertex-Backed Draft Cases
 
-The current `extract_action_intents_from_manifest` helper is a static prototype.
-The target design is browser-backed action discovery: build a canonical route
-worklist from a stable manifest, skip or fold query-string variants, open each
-canonical route with `playwright-cli`, inspect the live UI, and generate action
-tasks only from observed safe UI evidence.
+Action discovery now targets human-reviewable draft cases instead of final
+executable action tasks. This system is meant to help understand a SUT and
+prepare draft cases for later refinement and downstream execution by another
+web agent.
 
-The first implemented steps are `build_action_discovery_worklist`, which prepares
-the canonical route list, and `discover_page_actions_from_worklist`, which opens
-each canonical route and writes per-route browser evidence plus action-intent
-drafts. Browser-backed discovery folds query variants, skips auth redirects,
-deduplicates repeated global controls across routes, and suppresses controls
-already covered by stronger route/form evidence.
+```text
+route manifest
+-> build_action_discovery_worklist
+-> observe_task_pages_from_worklist
+-> page_observations/page-*.yml
+-> summarize_pages_with_vertex
+-> page_summaries/page-*.summary.json
+-> draft_test_ideas_with_vertex
+-> page_drafts/page-*.drafts.json
+-> merge_page_drafts
+-> draft_backlog.json
+```
 
-`generate_action_tasks_from_intents` converts accepted browser-backed intents
-into complete action task JSON files. Create/edit workflows are generated only
-when reviewed executable steps and commit policy exist; incomplete create/edit
-intents are skipped. Low-value labels such as numeric-only controls or raw path
-labels are skipped.
+`build_action_discovery_worklist` stays deterministic. It prepares canonical
+routes, folds query-string variants, and skips unsafe/session-ending routes. It
+must not decide what actions are available on a page.
 
-For higher semantic quality, add an LLM review pass between discovery and task
-generation. `prepare_action_intent_review_packets` writes route-scoped packets
-containing baseline evidence, forms, controls, and heuristic candidates. The ADK
-agent reviews those packets as a generic SUT reviewer, then
-`write_reviewed_action_intents` writes only constrained updates to existing
-intent IDs. This keeps LLM judgment in the loop without letting it invent
-unobserved routes or controls.
+`observe_task_pages_from_worklist` opens each canonical route with
+`playwright-cli` and writes one `page-*.yml` artifact per canonical route:
+the raw `playwright-cli snapshot` tree plus supporting structured evidence
+(headings/text, forms, tables, snapshot paths, and route
+provenance). It intentionally does not pre-classify page controls into fixed
+action records.
 
-Reviewed intents can provide executable `workflow_steps`, `test_data`,
-`success_evidence`, and `commit_policy`. When those fields are present,
-generated create/edit tasks can fill and submit real workflows. Missing reviewed
-workflow fields are skipped instead of generating partial placeholder tasks.
+`summarize_pages_with_vertex` reads those page artifacts and produces
+`page-*.summary.json`, including a short plain-language description so a human
+can skim the SUT quickly.
+
+`draft_test_ideas_with_vertex` reads the page artifact plus optional page
+summary and produces per-page draft cases. These drafts should favor recall over
+polish and stay grounded in visible evidence. Pure route-to-route navigation
+drafts and simple page-entry `open` drafts are intentionally excluded because
+route navigation is already covered elsewhere. For a page with one clear primary
+form submission, keep one happy-path draft instead of many invalid/empty input
+variants.
+
+`merge_page_drafts` combines per-page drafts into a single deduped
+`draft_backlog.json` for human refinement. This backlog is the main output of
+the current system.
 
 Example ADK prompt:
 
 ```text
 Build an action discovery worklist from timeoff/route_manifest.auth.generic.json into timeoff/action_worklist.auth.generic.json. Use site_name timeoff and skip query-string variants.
 
-Run browser-backed page action discovery from timeoff/action_worklist.auth.generic.json into timeoff/action_intents.browser.auth.generic.json. Write evidence under timeoff/action_discovery. Do not submit forms or generate final action tasks yet.
+Observe task pages from timeoff/action_worklist.auth.generic.json into timeoff/page_observations.index.json. Write observations under timeoff/page_observations. Do not classify actions or generate final task files yet.
 
-Prepare action intent review packets from timeoff/action_intents.browser.auth.generic.json into timeoff/action_review_packets. Review the packets as a generic SUT action reviewer, then write reviewed intents to timeoff/action_intents.reviewed.auth.generic.json.
+Summarize timeoff/page_observations.index.json into timeoff/page_summaries.index.json and write summaries under timeoff/page_summaries.
 
-Generate action tasks from timeoff/action_intents.reviewed.auth.generic.json into timeoff/generated_tasks/actions. Use site_name timeoff, storage_state_path .auth/timeoff_state.json, and clear_existing true.
+Draft page-level test ideas from timeoff/page_observations.index.json into timeoff/page_drafts.index.json. Use timeoff/page_summaries.index.json to help with page understanding.
+
+Merge timeoff/page_drafts.index.json into timeoff/draft_backlog.json. Stop after the draft backlog is written.
 ```
 
 For the repeatable workflow wrapper, use:
 
 ```text
-Run the action-review-task-workflow skill for timeoff/action_intents.browser.auth.generic.json.
-Use site_name timeoff, output_root timeoff, storage_state_path .auth/timeoff_state.json, and start_url http://localhost:3102.
-First create review packets and stop for review.
+Run the action-review-task-workflow skill for timeoff.
+Use worklist_path timeoff/action_worklist.auth.generic.json, output_root timeoff, storage_state_path .auth/timeoff_state.json, and start_url http://localhost:3102.
+First observe pages, then summarize them, then draft page-level cases, and finally merge to draft_backlog.json.
 ```
 
-If `action_intents.browser*.json` is missing or stale, run upstream discovery
-first with `build_action_discovery_worklist` and
-`discover_page_actions_from_worklist`, then run
-`run_action_review_task_workflow` with the produced intents path.
-
-`reviewed_intents_json` should be produced by the agent/LLM from review packets,
-not hand-written in natural language. For safer execution in CLI flows, prefer
-writing reviewed decisions to a JSON file and pass `reviewed_intents_path`
-instead of embedding a long JSON string directly in the prompt.
-
-When `reviewed_intents_json` is malformed, the workflow now returns a structured
-`invalid_reviewed_intents_json` error result instead of crashing the whole run.
-
-The browser-backed phase writes per-route evidence plus `action_intents.json`
-style metadata, then action task files can be generated from accepted intents.
 Query-string routes such as
 `/calendar/teamview?department=1&date=2026-03` should be folded into
-`/calendar/teamview` and not explored or generated as separate action tasks.
-High-risk candidates such as delete, import, upload, export, approve, and reject
-remain skipped by default and reported in `skipped_candidates`.
-Repeated global controls such as a persistent top-nav `New` button are retained
-once and reported as `global_duplicate` on later routes.
+`/calendar/teamview` by the worklist and not observed or generated as a separate
+draft page.
 
 ## Context Memory
 
@@ -375,5 +376,5 @@ Recommended next steps:
 2. Run the authenticated BFS crawl and inspect the authenticated manifest.
 3. Compare guest and authenticated manifests for duplicate routes and login-only routes.
 4. Split large authenticated coverage by role, route prefix, or feature area instead of only increasing `max_pages`.
-5. Add project-specific output generators once the manifests are stable.
-6. Add task generation after the manifest-first workflow is stable.
+5. Add project-specific observation and prompt refinements once the manifests are stable.
+6. Improve draft backlog quality after the manifest-first workflow is stable.

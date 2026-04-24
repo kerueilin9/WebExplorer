@@ -29,24 +29,27 @@ from adk_playwright_agent.tools.crawler_tools import (
     crawl_site_to_manifest,
 )
 from adk_playwright_agent.tools.generator_tools import (
-    generate_action_tasks_from_intents,
     generate_task_file,
     generate_tasks_from_manifest,
     write_route_manifest,
 )
-from adk_playwright_agent.tools.intent_tools import (
+from adk_playwright_agent.tools.action_task_tools import (
     build_action_discovery_worklist,
-    discover_page_actions_from_worklist,
-    extract_action_intents_from_manifest,
-    prepare_action_intent_review_packets,
-    write_reviewed_action_intents,
+    consolidate_task_drafts_to_backlog,
+    observe_task_pages_from_worklist,
+)
+from adk_playwright_agent.tools.page_summary_tools import (
+    summarize_pages_with_vertex,
+)
+from adk_playwright_agent.tools.draft_case_tools import (
+    draft_test_ideas_with_vertex,
+    merge_page_drafts,
 )
 from adk_playwright_agent.tools.validation_tools import (
     validate_task_directory,
     validate_task_file,
 )
 from adk_playwright_agent.tools.workflow_tools import (
-    run_action_review_task_workflow,
     run_manifest_first_route_workflow,
 )
 from adk_playwright_agent.tools.workspace_tools import (
@@ -132,16 +135,15 @@ def _build_root_agent():
             FunctionTool(write_route_manifest),
             FunctionTool(generate_task_file, require_confirmation=True),
             FunctionTool(generate_tasks_from_manifest),
-            FunctionTool(generate_action_tasks_from_intents),
             FunctionTool(build_action_discovery_worklist),
-            FunctionTool(discover_page_actions_from_worklist),
-            FunctionTool(prepare_action_intent_review_packets),
-            FunctionTool(write_reviewed_action_intents),
-            FunctionTool(extract_action_intents_from_manifest),
+            FunctionTool(observe_task_pages_from_worklist),
+            FunctionTool(summarize_pages_with_vertex),
+            FunctionTool(draft_test_ideas_with_vertex),
+            FunctionTool(merge_page_drafts),
+            FunctionTool(consolidate_task_drafts_to_backlog),
             FunctionTool(validate_task_file),
             FunctionTool(validate_task_directory),
             FunctionTool(run_manifest_first_route_workflow),
-            FunctionTool(run_action_review_task_workflow),
             *skill_toolsets,
         ],
     )

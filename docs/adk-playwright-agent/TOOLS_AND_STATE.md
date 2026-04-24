@@ -268,41 +268,105 @@ Returns:
 - `canonical_route_count`
 - `folded_variant_count`
 
-### `discover_page_actions`
+### `observe_task_pages_from_worklist`
 
 Inputs:
 
 - `action_worklist`
 - `session_name`
-- `max_actions_per_route`
-- `max_safe_clicks_per_route`
-- `allowed_action_types`
+- `storage_state_path`
+- `max_controls_per_route`
+- `max_forms_per_route`
 
 Returns:
 
-- `action_catalog_path`
-- `evidence_dir`
-- `intent_count`
-- `skipped_intents`
+- `observation_index_path`
+- `observation_dir`
+- `observation_count`
+- `error_count`
 
 Notes:
 
-- this tool or subflow must open each canonical route with `playwright-cli`
-- final action tasks must be based on live snapshot/DOM evidence, not static manifest scanning alone
+- this tool opens each canonical route with `playwright-cli`
+- it records page observations, not pre-classified action records
 - query-string variants should be folded into their base path and skipped for separate action discovery by default
 
-### `generate_action_tasks`
+### `summarize_pages_with_vertex`
 
 Inputs:
 
-- `action_catalog`
-- `output_dir`
-- `require_login`
-- `storage_state_path`
+- `observation_index_path`
+- `summary_index_path`
+- `summary_output_dir`
+- `site_name`
+- `max_pages`
 
 Returns:
 
-- `generated_files`
+- `page_summaries.index.json`
+- one `page-*.summary.json` per observed page
+- summary/error counts
+
+Notes:
+
+- this tool reads `page-*.yml` artifacts from the observation phase
+- it uses Vertex AI to create a page summary, not a final test case
+- summaries should include a short `plain_language_summary` for quick human review
+
+### `draft_test_ideas_with_vertex`
+
+Inputs:
+
+- `observation_index_path`
+- `draft_index_path`
+- `draft_output_dir`
+- `summary_index_path`
+- `site_name`
+- `max_pages`
+
+Returns:
+
+- `page_drafts.index.json`
+- one `page-*.drafts.json` per observed page
+- page-draft/error counts
+
+Notes:
+
+- this tool reads `page-*.yml` and optional `page-*.summary.json` files
+- it asks Vertex AI to propose candidate draft cases grounded in observed evidence
+- output is intentionally incomplete and designed for later human refinement
+
+### `merge_page_drafts`
+
+Inputs:
+
+- `draft_index_path`
+- `output_path`
+- `site_name`
+- `include_categories`
+- `exclude_categories`
+- `max_drafts`
+
+Returns:
+
+- `draft_backlog.json`
+- raw draft count
+- deduped backlog count
+- category, priority, and execution policy summary
+
+### `consolidate_task_drafts_to_backlog`
+
+Inputs:
+
+- raw drafts JSON produced from one or more page draft files
+- `output_path`
+- `site_name`
+
+Returns:
+
+- normalized `draft_backlog.json`-style payload
+- draft/backlog counts
+- category, priority, and execution policy summary
 
 ### `generate_playwright_test`
 
@@ -426,10 +490,10 @@ Example values:
 - `action.folded_query_variants`
 - `action.current_route_id`
 - `action.current_canonical_path`
-- `action.discovered_intents`
-- `action.evidence_dir`
-- `action.intent_catalog_path`
-- `action.generated_task_files`
+- `action.page_observation_dir`
+- `action.page_summary_dir`
+- `action.page_draft_dir`
+- `action.draft_backlog_path`
 
 ### Skill Run State
 
@@ -520,12 +584,14 @@ Suggested profile shape:
             "validate_outputs": true
           }
         },
-        "action_review": {
-          "tool": "run_action_review_task_workflow",
+        "action_tasks": {
+          "tool": "action-review-task-workflow",
           "params": {
-            "require_review": true,
-            "generate_tasks": true,
-            "validate_outputs": true
+            "build_worklist": true,
+            "observe_pages": true,
+            "summarize_pages": true,
+            "draft_page_cases": true,
+            "merge_backlog": true
           }
         }
       },
@@ -627,8 +693,8 @@ Suggested shape:
 
 ## Browser-Backed Action Evidence Shape
 
-Each action-discovery route should produce an evidence record before final task
-generation.
+Each action-discovery route should produce an evidence record before summary and
+draft-case generation.
 
 Suggested shape:
 
@@ -657,55 +723,64 @@ Suggested shape:
 }
 ```
 
-## Action Intent Metadata Shape
+## Page Summary Metadata Shape
 
-After route discovery, each route may produce zero or more action intents.
+After route observation, Vertex should produce one summary per page.
 
 Suggested shape:
 
 ```json
 {
-  "intent_id": "timeoff_create_employee_users_add",
-  "route_id": "timeoff_authenticated_account_users_add",
-  "intent_type": "create",
-  "entity": "employee",
-  "entry_path": "/users/add",
-  "require_login": true,
-  "input_fields": [
-    "firstname",
-    "lastname",
-    "email"
-  ],
-  "submit_control": "Create",
-  "success_evidence": [
-    "Employee list shows the new employee",
-    "Success toast or confirmation message"
-  ],
-  "safety_level": "safe_with_confirmation"
+  "page_id": "page-001",
+  "route": "/users/add",
+  "url": "http://localhost:3102/users/add",
+  "title": "Add employee",
+  "plain_language_summary": "這頁主要是新增員工資料的表單頁面。",
+  "page_purpose": "Create a new employee record",
+  "main_entities": ["employee"],
+  "key_forms": ["employee creation form"],
+  "key_actions": ["create employee", "cancel"],
+  "likely_user_goals": ["create employee", "review required fields"],
+  "risk_notes": ["submitting the form changes application state"],
+  "evidence": ["heading: Add employee", "button: Create"],
+  "source_page_artifact": "timeoff/page_observations/page-001-users-add.yml"
 }
 ```
 
-## Action Task Metadata Shape
+## Page Draft Metadata Shape
 
-Suggested task shape for a workflow case:
+After page summary generation, Vertex may produce zero or more page-level draft
+cases.
+
+Suggested shape:
 
 ```json
 {
-  "task_id": "timeoff_auth_create_employee",
-  "gherkin": {
-    "feature": "timeoff Employee Management",
-    "scenario": "Create Employee",
-    "given": ["I am logged in to the site"],
-    "when": [
-      "I open the configured home page",
-      "I navigate to /users/add",
-      "I fill required employee fields",
-      "I submit the employee form"
-    ],
-    "then": [
-      "The employee list should include the new employee"
-    ]
-  }
+  "page_id": "page-001",
+  "route": "/users/add",
+  "plain_language_summary": "這頁主要是新增員工資料的表單頁面。",
+  "drafts": [
+    {
+      "draft_id": "timeoff_users_add_create_employee",
+      "title": "Create employee",
+      "goal": "建立新員工資料",
+      "category": "create",
+      "risk": "state_changing_safe",
+      "priority": "P0",
+      "rough_steps": [
+        "Open Add employee.",
+        "Fill visible required fields.",
+        "Submit the form."
+      ],
+      "evidence": [
+        "The page shows an Add employee heading and employee form fields."
+      ],
+      "notes_for_human": [
+        "Need disposable employee test data.",
+        "Success assertion is not finalized yet."
+      ]
+    }
+  ]
 }
 ```
 

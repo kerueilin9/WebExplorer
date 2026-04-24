@@ -1,4 +1,4 @@
-"""Smoke test for action intent extraction."""
+"""Smoke test for the LLM-first action task discovery path."""
 
 from __future__ import annotations
 
@@ -8,37 +8,19 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from adk_playwright_agent.app.models import CommandResult
-from adk_playwright_agent.tools.generator_tools import (
-    _action_intent_has_low_value_label,
-    generate_action_tasks_from_intents,
-)
-from adk_playwright_agent.tools import intent_tools
-from adk_playwright_agent.tools.validation_tools import validate_task_directory
-from adk_playwright_agent.tools.workflow_tools import run_action_review_task_workflow
+from adk_playwright_agent.tools import action_task_tools, draft_case_tools, page_summary_tools
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover - dependency guard
+    yaml = None
 
 
 def main() -> None:
     project_root = Path(__file__).resolve().parents[1]
     load_dotenv(project_root / ".env")
 
-    result = intent_tools.extract_action_intents_from_manifest(
-        manifest_path="adk_playwright_agent/eval/fixtures/action_intent_manifest.json",
-        output_path="adk_playwright_agent/.adk/action_intents.json",
-        site_name="sample",
-    )
-    print(json.dumps(result, indent=2))
-
-    output_path = Path(result["output_path"])
-    payload = json.loads(output_path.read_text(encoding="utf-8"))
-    intent_types = {intent["intent_type"] for intent in payload["intents"]}
-    skipped_reasons = {item["reason"] for item in payload["skipped_candidates"]}
-
-    assert result["ok"] is True
-    assert "search" in intent_types
-    assert "create" in intent_types
-    assert "high_risk" in skipped_reasons
-
-    worklist_result = intent_tools.build_action_discovery_worklist(
+    worklist_result = action_task_tools.build_action_discovery_worklist(
         manifest_path="adk_playwright_agent/eval/fixtures/action_intent_manifest.json",
         output_path="adk_playwright_agent/.adk/action_worklist.json",
         site_name="sample",
@@ -49,9 +31,7 @@ def main() -> None:
     worklist = json.loads(worklist_path.read_text(encoding="utf-8"))
     canonical_paths = {route["canonical_path"] for route in worklist["routes"]}
     skipped_route_reasons = {item["reason"] for item in worklist["skipped_routes"]}
-    teamview = next(
-        route for route in worklist["routes"] if route["canonical_path"] == "/calendar/teamview"
-    )
+    teamview = next(route for route in worklist["routes"] if route["canonical_path"] == "/calendar/teamview")
 
     assert worklist_result["ok"] is True
     assert "/calendar/teamview" in canonical_paths
@@ -60,207 +40,99 @@ def main() -> None:
     assert worklist_result["folded_variant_count"] == 1
     assert "unsafe_route" in skipped_route_reasons
 
-    previous_adapter = intent_tools._ADAPTER
+    previous_adapter = action_task_tools._ADAPTER
     try:
-        intent_tools._ADAPTER = _FakeActionDiscoveryAdapter()
-        browser_result = intent_tools.discover_page_actions_from_worklist(
+        action_task_tools._ADAPTER = _FakeActionDiscoveryAdapter()
+        observation_result = action_task_tools.observe_task_pages_from_worklist(
             worklist_path="adk_playwright_agent/.adk/action_worklist.json",
-            output_path="adk_playwright_agent/.adk/action_intents.browser.json",
-            evidence_dir="adk_playwright_agent/.adk/action_discovery",
+            output_path="adk_playwright_agent/.adk/page_observations.index.json",
+            observation_dir="adk_playwright_agent/.adk/page_observations",
             site_name="sample",
             headed=False,
             persistent=False,
         )
     finally:
-        intent_tools._ADAPTER = previous_adapter
+        action_task_tools._ADAPTER = previous_adapter
 
-    print(json.dumps(browser_result, indent=2))
-    browser_output = json.loads(Path(browser_result["output_path"]).read_text(encoding="utf-8"))
-    browser_intent_types = {intent["intent_type"] for intent in browser_output["intents"]}
-    browser_labels = {intent["label"] for intent in browser_output["intents"]}
-    browser_skipped_reasons = {item["reason"] for item in browser_output["skipped_candidates"]}
-    evidence_paths = [Path(path) for path in browser_output["evidence_files"]]
+    print(json.dumps(observation_result, indent=2))
+    observation_index = json.loads(Path(observation_result["output_path"]).read_text(encoding="utf-8"))
+    observation_files = [Path(path) for path in observation_index["observation_files"]]
+    first_observation = _load_page_artifact(observation_files[0])
 
-    assert browser_result["ok"] is True
-    assert browser_result["route_count"] == 3
-    assert browser_result["intent_count"] == 5
-    assert "search" in browser_intent_types
-    assert "create" in browser_intent_types
-    assert "filter" in browser_intent_types
-    assert "Add employee" in browser_labels
-    assert "New absence" in browser_labels
-    assert "global_duplicate" in browser_skipped_reasons
-    assert all(path.exists() for path in evidence_paths)
+    assert observation_result["ok"] is True
+    assert observation_result["observation_count"] == 3
+    assert all(path.exists() for path in observation_files)
+    assert all(path.suffix == ".yml" for path in observation_files)
+    assert "llm_task_discovery" in first_observation
+    assert "intent_drafts" not in first_observation
+    assert first_observation["page_snapshot"]["content"]
+    assert first_observation["page_id"] == "page-001"
 
-    review_packet_result = intent_tools.prepare_action_intent_review_packets(
-        intents_path="adk_playwright_agent/.adk/action_intents.browser.json",
-        output_dir="adk_playwright_agent/.adk/action_review_packets",
-        clear_existing=True,
-    )
-    review_decisions = []
-    for intent in browser_output["intents"]:
-        decision = {
-            "intent_id": intent["intent_id"],
-            "decision": "accept",
-            "review_notes": "Accepted from route-scoped browser evidence.",
-        }
-        if intent["label"] == "New absence":
-            decision["label"] = "Request absence"
-            decision["review_notes"] = "Renamed to a clearer workflow label from visible evidence."
-            decision["workflow_steps"] = [
-                'I open the "Request absence" create workflow.',
-                'I fill "From date" with "2026-05-04".',
-                'I fill "To date" with "2026-05-04".',
-                'I fill "Reason" with "Reviewed action workflow smoke test".',
-                'I submit the request.',
-            ]
-            decision["test_data"] = {
-                "From date": "2026-05-04",
-                "To date": "2026-05-04",
-                "Reason": "Reviewed action workflow smoke test",
-            }
-            decision["commit_policy"] = "Submit is allowed because this reviewed create workflow is intended to create test data."
-            decision["success_evidence"] = [
-                "The absence request should be visible or a confirmation should be shown.",
-                "The workflow should not show validation errors for valid input.",
-            ]
-        elif intent["label"] == "Add employee" and intent.get("entry_path") == "/users/add":
-            decision["workflow_steps"] = [
-                'I open the "Add employee" create workflow.',
-                'I fill "First Name" with "Smoke".',
-                'I fill "Last Name" with "User".',
-                'I fill "Email Address" with "smoke.user@example.test".',
-                'I submit the employee form.',
-            ]
-            decision["test_data"] = {
-                "First Name": "Smoke",
-                "Last Name": "User",
-                "Email Address": "smoke.user@example.test",
-            }
-            decision["commit_policy"] = "Submit is allowed because this reviewed create workflow is intended to create disposable test data."
-            decision["success_evidence"] = [
-                "The employee should be created or a confirmation should be visible.",
-            ]
-        review_decisions.append(decision)
-    review_decisions.append(
-        {
-            "intent_id": "missing_intent",
-            "decision": "accept",
-            "review_notes": "This should be rejected by the constrained writer.",
-        }
-    )
-    reviewed_result = intent_tools.write_reviewed_action_intents(
-        source_intents_path="adk_playwright_agent/.adk/action_intents.browser.json",
-        reviewed_intents_json=json.dumps({"reviewed_intents": review_decisions}),
-        output_path="adk_playwright_agent/.adk/action_intents.reviewed.json",
-        reviewer_name="smoke_llm_reviewer",
-    )
-    reviewed_output = json.loads(Path(reviewed_result["output_path"]).read_text(encoding="utf-8"))
-    reviewed_labels = {intent["label"] for intent in reviewed_output["intents"]}
-    review_skip_reasons = {item["reason"] for item in reviewed_output["review_skips"]}
+    previous_vertex = page_summary_tools._VERTEX
+    try:
+        page_summary_tools._VERTEX = _FakeVertexAdapter()
+        summary_result = page_summary_tools.summarize_pages_with_vertex(
+            observation_index_path="adk_playwright_agent/.adk/page_observations.index.json",
+            summary_index_path="adk_playwright_agent/.adk/page_summaries.index.json",
+            summary_output_dir="adk_playwright_agent/.adk/page_summaries",
+            site_name="sample",
+        )
+    finally:
+        page_summary_tools._VERTEX = previous_vertex
 
-    assert review_packet_result["ok"] is True
-    assert review_packet_result["packet_count"] == 3
-    assert reviewed_result["reviewed_intent_count"] == 5
-    assert "Request absence" in reviewed_labels
-    assert "unknown_intent_id" in review_skip_reasons
+    print(json.dumps(summary_result, indent=2))
+    summary_index = json.loads(Path(summary_result["summary_index_path"]).read_text(encoding="utf-8"))
+    first_summary = json.loads(Path(summary_index["summaries"][0]["path"]).read_text(encoding="utf-8"))
 
-    save_candidate = intent_tools._candidate_from_text(
-        text="Save changes to department",
-        label="Save changes to department",
-        route={"path": "/settings/departments/edit/1", "phase": "authenticated"},
+    assert summary_result["ok"] is True
+    assert summary_result["summary_count"] == 3
+    assert "plain_language_summary" in first_summary
+    assert 10 <= len(first_summary["plain_language_summary"]) <= 100
+
+    previous_vertex = draft_case_tools._VERTEX
+    try:
+        draft_case_tools._VERTEX = _FakeVertexAdapter()
+        draft_result = draft_case_tools.draft_test_ideas_with_vertex(
+            observation_index_path="adk_playwright_agent/.adk/page_observations.index.json",
+            summary_index_path="adk_playwright_agent/.adk/page_summaries.index.json",
+            draft_index_path="adk_playwright_agent/.adk/page_drafts.index.json",
+            draft_output_dir="adk_playwright_agent/.adk/page_drafts",
+            site_name="sample",
+        )
+    finally:
+        draft_case_tools._VERTEX = previous_vertex
+
+    print(json.dumps(draft_result, indent=2))
+    draft_index = json.loads(Path(draft_result["draft_index_path"]).read_text(encoding="utf-8"))
+    first_draft_page = json.loads(Path(draft_index["draft_pages"][0]["path"]).read_text(encoding="utf-8"))
+
+    assert draft_result["ok"] is True
+    assert draft_result["draft_page_count"] == 3
+    assert first_draft_page["drafts"]
+    assert "notes_for_human" in first_draft_page["drafts"][0]
+
+    backlog_result = draft_case_tools.merge_page_drafts(
+        draft_index_path="adk_playwright_agent/.adk/page_drafts.index.json",
+        output_path="adk_playwright_agent/.adk/draft_backlog.json",
         site_name="sample",
-        route_id="sample_authenticated_departments_edit",
-        entry_path="/settings/departments/edit/1",
-        fields=[],
-        source="primary_action",
     )
-    report_update_candidate = intent_tools._candidate_from_text(
-        text="Update results department",
-        label="Update results",
-        route={"path": "/reports/allowancebytime", "phase": "authenticated"},
-        site_name="sample",
-        route_id="sample_authenticated_reports_allowancebytime",
-        entry_path="/reports/allowancebytime",
-        fields=["Department"],
-        source="primary_action",
-    )
+    print(json.dumps(backlog_result, indent=2))
+    backlog = json.loads(Path(backlog_result["output_path"]).read_text(encoding="utf-8"))
+    backlog_by_category = {task["category"]: task for task in backlog["tasks"]}
 
-    assert save_candidate is not None
-    assert save_candidate["intent_type"] == "edit"
-    assert report_update_candidate is not None
-    assert report_update_candidate["intent_type"] == "filter"
-    assert report_update_candidate["safety_level"] == "read_only"
-
-    action_task_result = generate_action_tasks_from_intents(
-        intents_path="adk_playwright_agent/.adk/action_intents.reviewed.json",
-        output_dir="adk_playwright_agent/.adk/generated_action_tasks",
-        site_name="sample",
-        storage_state_path=".auth/sample_state.json",
-        clear_existing=True,
-    )
-    action_task_validation = validate_task_directory(
-        directory="adk_playwright_agent/.adk/generated_action_tasks",
-        expected_start_url="http://localhost:3102",
-    )
-    print(json.dumps(action_task_result, indent=2))
-    print(json.dumps(action_task_validation, indent=2))
-
-    assert action_task_result["ok"] is True
-    action_task_skipped_reasons = {item["reason"] for item in action_task_result["skipped"]}
-    assert action_task_result["generated_count"] == 4
-    assert "covered_by_target_route_intent" in action_task_skipped_reasons
-    assert action_task_validation["total_files"] == 4
-    assert action_task_validation["invalid_files"] == 0
-    request_task_path = Path(action_task_result["generated"][1]["path"])
-    request_task = json.loads(request_task_path.read_text(encoding="utf-8"))
-    request_steps = request_task["gherkin"]["when"]
-    request_assertions = request_task["gherkin"]["then"]
-    assert any("I submit the request." == step for step in request_steps)
-    assert all("stop before submitting" not in step.lower() for step in request_steps)
-    assert "The absence request should be visible or a confirmation should be shown." in request_assertions
-    assert _action_intent_has_low_value_label({"label": "1"}) is True
-    assert _action_intent_has_low_value_label({"label": "/users/edit/1/schedule"}) is True
-    assert _action_intent_has_low_value_label({"label": "Save changes"}) is False
-
-    workflow_pending = run_action_review_task_workflow(
-        intents_path="adk_playwright_agent/.adk/action_intents.browser.json",
-        output_root="adk_playwright_agent/.adk/action_workflow_pending",
-        site_name="sample",
-        storage_state_path=".auth/sample_state.json",
-        clear_existing=True,
-    )
-    workflow_completed = run_action_review_task_workflow(
-        intents_path="adk_playwright_agent/.adk/action_intents.browser.json",
-        output_root="adk_playwright_agent/.adk/action_workflow_completed",
-        site_name="sample",
-        storage_state_path=".auth/sample_state.json",
-        reviewed_intents_json=json.dumps({"reviewed_intents": review_decisions}),
-        clear_existing=True,
-    )
-    workflow_missing_packets = run_action_review_task_workflow(
-        intents_path="adk_playwright_agent/.adk/missing_action_intents.json",
-        output_root="adk_playwright_agent/.adk/action_workflow_missing_packets",
-        site_name="sample",
-        storage_state_path=".auth/sample_state.json",
-        clear_existing=True,
-    )
-
-    assert workflow_pending["ok"] is True
-    assert workflow_pending["summary"]["needs_review"] is True
-    assert workflow_pending["summary"]["review_packet_count"] == 3
-    assert workflow_pending["phases"]["action_tasks"]["skipped"] is True
-    assert workflow_completed["ok"] is True
-    assert workflow_completed["summary"]["reviewed_intent_count"] == 5
-    assert workflow_completed["summary"]["action_generated_count"] == 4
-    assert workflow_completed["summary"]["action_valid_files"] == 4
-    assert workflow_missing_packets["ok"] is False
-    assert workflow_missing_packets["issues"][0]["phase"] == "review_packets"
+    assert backlog_result["ok"] is True
+    assert backlog_result["raw_draft_count"] == 4
+    assert backlog_result["backlog_count"] == 3
+    assert backlog_by_category["create"]["priority"] == "P0"
+    assert backlog_by_category["filter"]["execution_policy"] == "execute_read_only"
+    assert backlog_by_category["delete"]["execution_policy"] == "dry_run_open_confirm"
+    assert backlog_by_category["delete"]["execution_order"] > backlog_by_category["create"]["execution_order"]
 
 
 class _FakeActionDiscoveryAdapter:
     def __init__(self) -> None:
         self.current_url = ""
+        self.cwd = Path(__file__).resolve().parents[2]
 
     def open_browser(self, base_url: str, session_name: str, headed: bool, persistent: bool):
         self.current_url = base_url
@@ -271,10 +143,14 @@ class _FakeActionDiscoveryAdapter:
         return _result(url=url, title=_title_for(url))
 
     def snapshot(self, session_name: str, depth: int | None = None):
+        snapshot_relative = Path(".adk") / "snapshots" / f"{Path(self.current_url).name or 'home'}.yml"
+        snapshot_path = self.cwd / snapshot_relative
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_text(_snapshot_text_for(self.current_url), encoding="utf-8")
         return _result(
             url=self.current_url,
             title=_title_for(self.current_url),
-            snapshot_path=f".adk/snapshots/{Path(self.current_url).name or 'home'}.json",
+            snapshot_path=str(snapshot_relative),
         )
 
     def eval_js(self, session_name: str, script: str, raw: bool):
@@ -324,6 +200,7 @@ def _page_data_for(url: str) -> dict:
             "url": url,
             "title": "Add employee",
             "headings": ["Add employee"],
+            "visible_text": "Add employee First name Email Create Cancel New absence",
             "forms": [
                 {"tag": "input", "type": "text", "name": "firstname", "label": "First name"},
                 {"tag": "input", "type": "email", "name": "email", "label": "Email"},
@@ -340,6 +217,7 @@ def _page_data_for(url: str) -> dict:
             "url": url,
             "title": "Team view",
             "headings": ["Team view"],
+            "visible_text": "Team view Department New absence Team calendar rows",
             "forms": [
                 {"tag": "select", "type": "", "name": "department", "label": "Department"},
             ],
@@ -353,6 +231,7 @@ def _page_data_for(url: str) -> dict:
         "url": url,
         "title": "Employees",
         "headings": ["Employees"],
+        "visible_text": "Employees Search employees Add employee Export employees New absence Employee list",
         "forms": [
             {"tag": "input", "type": "search", "name": "q", "label": "Search employees"},
         ],
@@ -364,6 +243,175 @@ def _page_data_for(url: str) -> dict:
         ],
         "tables": [{"text": "Employee list"}],
     }
+
+
+def _snapshot_text_for(url: str) -> str:
+    if url.endswith("/users/add"):
+        return (
+            '- heading "Add employee" [ref=e1]\n'
+            '- textbox "First name" [ref=e2]\n'
+            '- textbox "Email" [ref=e3]\n'
+            '- button "Create" [ref=e4]\n'
+            '- link "Cancel" [ref=e5]\n'
+        )
+    if url.endswith("/calendar/teamview"):
+        return (
+            '- heading "Team view" [ref=e1]\n'
+            '- combobox "Department" [ref=e2]\n'
+            '- button "New absence" [ref=e3]\n'
+            '- table [ref=e4]: Team calendar rows\n'
+        )
+    return (
+        '- heading "Employees" [ref=e1]\n'
+        '- searchbox "Search employees" [ref=e2]\n'
+        '- link "Add employee" [ref=e3]\n'
+        '- link "Export employees" [ref=e4]\n'
+        '- button "New absence" [ref=e5]\n'
+    )
+
+
+class _FakeVertexAdapter:
+    def generate_json(self, *, prompt: str, temperature: float = 0.2, max_output_tokens: int = 4096):
+        is_users_add = _prompt_has_route(prompt, "/users/add")
+        is_teamview = _prompt_has_route(prompt, "/calendar/teamview")
+        if '"drafts"' in prompt:
+            if is_users_add:
+                return {
+                    "ok": True,
+                    "data": {
+                        "drafts": [
+                            {
+                                "title": "Create employee",
+                                "goal": "建立新員工資料",
+                                "category": "create",
+                                "priority": "P0",
+                                "risk": "state_changing_safe",
+                                "rough_steps": ["Open Add employee page", "Fill required fields", "Submit the form"],
+                                "evidence": ["Add employee heading is visible", "Create button is visible"],
+                                "notes_for_human": ["Need disposable test data"],
+                                "dedupe_key": "sample|create|employee|/users/add",
+                            }
+                        ]
+                    },
+                }
+            if is_teamview:
+                return {
+                    "ok": True,
+                    "data": {
+                        "drafts": [
+                            {
+                                "title": "Filter team calendar by department",
+                                "goal": "依部門篩選團隊行事曆",
+                                "category": "filter",
+                                "priority": "P1",
+                                "risk": "read_only",
+                                "rough_steps": ["Open Team view", "Use the Department control"],
+                                "evidence": ["Department control is visible"],
+                                "notes_for_human": ["Result assertion still needs human review"],
+                            }
+                        ]
+                    },
+                }
+            return {
+                "ok": True,
+                "data": {
+                    "drafts": [
+                        {
+                            "title": "Create employee",
+                            "goal": "從員工清單進入新增員工流程",
+                            "category": "create",
+                            "priority": "P0",
+                            "risk": "state_changing_safe",
+                            "rough_steps": ["Open Employees page", "Click Add employee"],
+                            "evidence": ["Add employee link is visible"],
+                            "notes_for_human": ["This is only the entry draft, not the full form submission"],
+                            "dedupe_key": "sample|create|employee|/users/add",
+                        },
+                    {
+                        "title": "Delete employee",
+                        "goal": "確認是否可進入刪除員工流程",
+                        "category": "delete",
+                            "priority": "P0",
+                            "risk": "state_changing_destructive",
+                            "rough_steps": ["Open Employees page", "Open a delete entrypoint if visible"],
+                        "evidence": ["Employee list implies row-level actions may exist"],
+                        "notes_for_human": ["Only execute after human review"],
+                    },
+                    {
+                        "title": "Navigate to home page",
+                        "goal": "確認可透過全域導覽返回首頁",
+                        "category": "navigate",
+                        "priority": "P2",
+                        "risk": "read_only",
+                        "rough_steps": ["Click the Home link"],
+                        "evidence": ["Global navigation includes a Home link"],
+                        "notes_for_human": ["Should be filtered because route navigation is already covered elsewhere"],
+                    },
+                ]
+            },
+        }
+        if "plain_language_summary" in prompt:
+            if is_users_add:
+                return {
+                    "ok": True,
+                    "data": {
+                        "plain_language_summary": "這頁主要用來新增員工資料，會看到基本欄位和建立按鈕。",
+                        "page_purpose": "Create a new employee record.",
+                        "main_entities": ["employee"],
+                        "key_forms": ["employee form"],
+                        "key_actions": ["Create", "Cancel"],
+                        "likely_user_goals": ["create employee"],
+                        "risk_notes": ["submitting changes state"],
+                        "evidence": ["heading: Add employee", "button: Create"],
+                    },
+                }
+            if is_teamview:
+                return {
+                    "ok": True,
+                    "data": {
+                        "plain_language_summary": "這頁看起來是在查看團隊行事曆，並可依部門切換內容。",
+                        "page_purpose": "Inspect the team calendar.",
+                        "main_entities": ["team calendar", "department"],
+                        "key_forms": ["department filter"],
+                        "key_actions": ["Department", "New absence"],
+                        "likely_user_goals": ["filter team calendar"],
+                        "risk_notes": [],
+                        "evidence": ["heading: Team view", "label: Department"],
+                    },
+                }
+            return {
+                "ok": True,
+                "data": {
+                    "plain_language_summary": "這頁主要是在看員工清單，也能搜尋或進一步操作員工資料。",
+                    "page_purpose": "Browse employees.",
+                    "main_entities": ["employee"],
+                    "key_forms": ["employee search"],
+                    "key_actions": ["Search", "Add employee", "Export employees"],
+                    "likely_user_goals": ["search employees", "open employee creation"],
+                    "risk_notes": ["export is an external side effect"],
+                    "evidence": ["heading: Employees", "action: Add employee"],
+                },
+            }
+        return {"ok": False, "error": "unexpected_prompt", "message": "Prompt shape not recognized by fake adapter."}
+
+
+def _load_page_artifact(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8")
+    if yaml is not None:
+        decoded = yaml.safe_load(text)
+        if isinstance(decoded, dict):
+            return decoded
+    return json.loads(text)
+
+
+def _prompt_has_route(prompt: str, route: str) -> bool:
+    markers = (
+        f'"route": "{route}"',
+        f"route: {route}",
+        f'"canonical_path": "{route}"',
+        f"canonical_path: {route}",
+    )
+    return any(marker in prompt for marker in markers)
 
 
 if __name__ == "__main__":

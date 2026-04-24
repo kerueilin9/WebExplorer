@@ -1,123 +1,142 @@
 ---
 name: action-review-task-workflow
-description: Run a generic SUT action review workflow from browser-backed action intents to reviewed action tasks.
+description: Run a generic SUT Vertex-backed draft-case workflow from browser observations to a prioritized draft backlog.
 compatibility: google-adk>=1.31.0,<2.0
 ---
 
 # Action Review Task Workflow
 
-Use this skill when the user asks to review browser-backed action intents and
-generate page-action task files. Keep the workflow generic across SUTs.
+Use this skill when the user asks to generate page-level draft cases from a
+generic SUT. Keep the workflow generic across SUTs. The preferred path is
+Vertex-backed and evidence-first: tools collect page observations, summarize
+each observed page, propose draft cases from the full page artifact, and merge
+those drafts into a prioritized backlog for human refinement.
 
 ## Required Inputs
 
-- `intents_path`: a browser-backed `action_intents.browser*.json` file.
-  If unavailable, create it first using `build_action_discovery_worklist` and
-  `discover_page_actions_from_worklist`.
+- `worklist_path`: a canonical action worklist from
+  `build_action_discovery_worklist`.
+- If `worklist_path` is unavailable, first create it from a stable route
+  manifest.
 
 ## Optional Inputs
 
 - `site_name`: short SUT name used for task ids.
-- `output_root`: where review packets, reviewed intents, and action task folders are written.
-- `storage_state_path`: authenticated browser state used by generated tasks.
-- `start_url`: expected task start URL. Omit it when the intents file references a worklist with start URL.
+- `output_root`: where observations, summaries, drafts, and backlog files are written.
+- `storage_state_path`: authenticated browser state used while observing authenticated routes.
+- `start_url`: expected task start URL. Omit it when the worklist already includes a start URL.
 - `manifest_path`: route manifest used to bootstrap browser-backed action discovery.
-- `worklist_path`: optional explicit path for action discovery worklist output.
-- `action_intents_output_path`: optional explicit path for browser-backed action intents output.
-- `reviewed_intents_json`: LLM review decisions for accepted/rejected/updated existing intent ids.
-- `reviewed_intents_path`: existing reviewed intents file to use for task generation.
-- `task_id_prefix`, `max_tasks`, and packet size limits.
+- `observations_path`: optional output path for the observation index.
+- `summaries_path`: optional output path for the per-page summary index.
+- `drafts_path`: optional output path for the per-page draft index.
+- `backlog_path`: optional output path for the consolidated prioritized backlog.
+- route/page budget limits and optional category filters for backlog merge.
 
 ## Execution Rules
 
-1. If `intents_path` does not exist or is stale, run upstream discovery first:
-  - call `build_action_discovery_worklist` from a route manifest
-  - call `discover_page_actions_from_worklist` from that worklist
-  - continue with the produced browser-backed `action_intents.browser*.json`
-2. Call `run_action_review_task_workflow` instead of manually chaining packet
-  generation, reviewed-intent writing, action-task generation, and validation.
-3. If no `reviewed_intents_json` or `reviewed_intents_path` is available, keep
-   `require_review=true`; the workflow should stop after review packet creation.
-4. Review packets as a generic SUT reviewer. Do not assume product-specific
-   routes, labels, roles, or admin paths.
-5. During review, only accept, reject, rename, or reclassify existing
-   `intent_id` values from the packet. Do not invent controls, routes, fields,
-   or assertions.
-6. Prefer visible headings, form labels, control labels, and observed browser
-   evidence over URL tokens.
-7. Reject low-value actions such as numeric-only labels, raw path labels, and
-   generic personal links.
-8. For create/edit workflows, provide executable reviewed fields when the
-  evidence shows enough fields and a safe submit/save control. Include
-  `workflow_steps`, `test_data`, `success_evidence`, and `commit_policy` in the
-  reviewed intent decision. Create/edit intents missing reviewed workflow fields
-  are skipped instead of generated as partial placeholder tasks.
-9. Validate generated action task files before reporting completion.
+1. Build or reuse a canonical worklist with `build_action_discovery_worklist`.
+   This step only dedupes routes and folds query-string variants. It must not
+   decide what page actions exist.
+2. Call `observe_task_pages_from_worklist` to open each canonical route and
+   write `page-*.yml` observations. Observations should include visible
+   headings, text, forms, tables, route provenance, and the raw
+   `playwright-cli snapshot` tree, but no heuristic action classification.
+3. Call `summarize_pages_with_vertex` to generate one `page-*.summary.json`
+   file per observed page. Each summary should include a short
+   `plain_language_summary` plus structured fields such as page purpose,
+   entities, key forms/actions, likely user goals, and risk notes.
+4. Call `draft_test_ideas_with_vertex` to generate one `page-*.drafts.json`
+   file per observed page. Drafts may be short and incomplete, but each draft
+   should include category, risk, priority, rough goal, route, evidence, and
+   notes for human refinement. Do not keep pure `navigate` drafts or simple
+   `open` drafts that only exercise site-wide navigation or page-entry links
+   already covered elsewhere. For pages with one clear primary form workflow,
+   keep one happy-path draft instead of many invalid/empty/minimal variants.
+5. Call `merge_page_drafts` to dedupe page-level drafts, normalize
+   category/risk/priority, and produce `draft_backlog.json`.
+6. Stop at the draft backlog. This system does not generate final executable
+   action tasks. The backlog is intended for human review and downstream
+   execution in another web agent.
 
-## Upstream Discovery Sequence
+## LLM-First Discovery Sequence
 
-Use this sequence when browser-backed intents are not ready yet:
+Use this sequence when action tasks are not ready yet:
 
 1. Build canonical action discovery worklist from route manifest:
   - `build_action_discovery_worklist(manifest_path, output_path, site_name, ...)`
-2. Discover browser-backed action evidence and intents from that worklist:
-  - `discover_page_actions_from_worklist(worklist_path, output_path, evidence_dir, site_name, storage_state_path, ...)`
-3. Use the produced `action_intents.browser*.json` as `intents_path` for
-  `run_action_review_task_workflow`.
+2. Observe each canonical route without pre-classifying actions:
+  - `observe_task_pages_from_worklist(worklist_path, output_path, observation_dir, site_name, storage_state_path, ...)`
+3. Summarize each page artifact with Vertex:
+  - `summarize_pages_with_vertex(observation_index_path, summary_index_path, summary_output_dir, site_name, ...)`
+4. Draft page-level test ideas with Vertex:
+  - `draft_test_ideas_with_vertex(observation_index_path, draft_index_path, draft_output_dir, summary_index_path, site_name, ...)`
+5. Merge and dedupe drafts into one backlog:
+  - `merge_page_drafts(draft_index_path, output_path, site_name, ...)`
 
-## Reviewed Intent Shape
+## Draft Task Shape
 
-When producing `reviewed_intents_json`, use this shape:
+When producing page-level draft cases, use this shape. Drafts do not need final
+assertions or executable task JSON:
 
 ```json
 {
-  "reviewed_intents": [
+  "page_id": "page-001",
+  "route": "/users/add",
+  "plain_language_summary": "這頁主要是新增員工資料的表單頁面。",
+  "drafts": [
     {
-      "intent_id": "existing intent id from the packet",
-      "decision": "accept",
-      "label": "clear user-facing task label",
-      "intent_type": "create",
-      "workflow_steps": [
-        "I open the \"Create item\" workflow.",
-        "I fill \"Name\" with \"Action Review Test\".",
-        "I submit the form."
+      "draft_id": "timeoff_users_add_create_employee",
+      "title": "Create employee",
+      "goal": "建立新員工資料",
+      "category": "create",
+      "priority": "P0",
+      "risk": "state_changing_safe",
+      "rough_steps": [
+        "Open Add employee page.",
+        "Fill required employee fields.",
+        "Submit the form."
       ],
-      "test_data": {
-        "Name": "Action Review Test"
-      },
-      "commit_policy": "Submit is allowed because this task is intended to create disposable test data.",
-      "success_evidence": [
-        "A confirmation or the created item should be visible."
+      "evidence": [
+        "The page shows an Add employee heading.",
+        "A create button is visible."
       ],
-      "review_notes": "Grounded in visible form fields and submit control."
+      "notes_for_human": [
+        "Need disposable employee test data.",
+        "Success assertion is not finalized yet."
+      ]
     }
   ]
 }
 ```
 
-Only include executable submit/save steps when the task is safe, reversible or
-test-data based, and grounded in observed fields/controls. Never include
-destructive, session-ending, payment, import/export, or irreversible operations.
+Prefer category values: `create`, `edit`, `delete`, `filter`, `search`,
+`export`, `import`, `auth_session`, or `unknown`.
+
+Keep `priority` separate from downstream execution order. `delete` can be high
+priority because it matters, but it should remain a draft until a later system
+decides how to execute it safely.
 
 ## Safe Defaults
 
 - action worklist file: `action_worklist.generic.json`
-- browser intents file: `action_intents.browser.generic.json`
-- action discovery evidence dir: `action_discovery`
-- review packet dir: `action_review_packets`
-- reviewed intents file: `action_intents.reviewed.generic.json`
-- action task dir: `generated_tasks/actions`
-- `clear_existing=true`, which removes only previous `packet_*.json` files and
-  previous `task_*.json` files in workflow-owned output directories.
+- observation index file: `page_observations.index.json`
+- observation dir: `page_observations`
+- page summary index file: `page_summaries.index.json`
+- page summary dir: `page_summaries`
+- page draft index file: `page_drafts.index.json`
+- page draft dir: `page_drafts`
+- backlog file: `draft_backlog.json`
 
 ## Example
 
 ```text
 Build action discovery worklist from timeoff/route_manifest.auth.generic.json into timeoff/action_worklist.auth.generic.json.
 
-Run browser-backed action discovery from timeoff/action_worklist.auth.generic.json into timeoff/action_intents.browser.auth.generic.json. Write evidence under timeoff/action_discovery.
+Observe task pages from timeoff/action_worklist.auth.generic.json into timeoff/page_observations.index.json. Write route observations under timeoff/page_observations.
 
-Run the action-review-task-workflow skill for timeoff/action_intents.browser.auth.generic.json.
-Use site_name timeoff, output_root timeoff, and storage_state_path .auth/timeoff_state.json.
-First create review packets and stop for review.
+Summarize the page observations with Vertex into timeoff/page_summaries.index.json and timeoff/page_summaries.
+
+Draft page-level test ideas with Vertex into timeoff/page_drafts.index.json and timeoff/page_drafts.
+
+Merge timeoff/page_drafts.index.json into timeoff/draft_backlog.json for human review. Do not generate final executable action tasks in this workflow.
 ```

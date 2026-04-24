@@ -14,6 +14,7 @@ from adk_playwright_agent.app.models import CommandResult
 _PAGE_URL_RE = re.compile(r"^- Page URL: (?P<value>.+)$", re.MULTILINE)
 _PAGE_TITLE_RE = re.compile(r"^- Page Title: (?P<value>.+)$", re.MULTILINE)
 _SNAPSHOT_RE = re.compile(r"\[Snapshot\]\((?P<value>[^)]+)\)")
+_SNAPSHOT_BLOCK_RE = re.compile(r"### Snapshot\s+```ya?ml\s*(?P<value>.*?)\s*```", re.DOTALL)
 
 
 class PlaywrightCliAdapter:
@@ -102,6 +103,7 @@ class PlaywrightCliAdapter:
         url = _match_value(_PAGE_URL_RE, stdout)
         title = _match_value(_PAGE_TITLE_RE, stdout)
         snapshot_path = _match_value(_SNAPSHOT_RE, stdout)
+        snapshot_content = _match_value(_SNAPSHOT_BLOCK_RE, stdout)
         return CommandResult(
             command=command,
             returncode=returncode,
@@ -110,6 +112,7 @@ class PlaywrightCliAdapter:
             url=url,
             title=title,
             snapshot_path=snapshot_path,
+            snapshot_content=snapshot_content,
         )
 
     @staticmethod

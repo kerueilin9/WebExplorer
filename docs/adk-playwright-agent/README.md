@@ -4,7 +4,7 @@ As of 2026-04-17, this document set describes the design and current implementat
 
 - use `playwright-cli` to explore a web application
 - infer navigable pages and important workflows
-- generate route-level navigation tasks first, then page-action tasks
+- generate route-level navigation tasks first, then page summaries and draft cases
 - optionally save authenticated browser state for reuse
 
 This package now lives inside the `adk_playwright_agent` implementation repo.
@@ -13,8 +13,8 @@ selector-level execution remain planned work.
 
 Current implementation status:
 
-- implemented: headed persistent `playwright-cli` adapter, guest/auth crawlers, manifest writer, recency-aware context memory helpers, navigation task generator, validation helpers, manifest-first workflow tool, canonical action discovery worklist builder, browser-backed page action evidence discovery, LLM action-intent review packet flow, reviewed executable action task generation, static action intent extractor, minimal ADK Skill package
-- planned: skill-first cross-workflow profile context, deeper selector-level execution, expanded ADK Skill resources and scripts
+- implemented: headed persistent `playwright-cli` adapter, guest/auth crawlers, manifest writer, recency-aware context memory helpers, navigation task generator, validation helpers, manifest-first workflow tool, canonical action discovery worklist builder, browser-backed page observation, Vertex-backed page summaries, Vertex-backed page draft generation, draft backlog consolidation, minimal ADK Skill package
+- planned: skill-first cross-workflow profile context, richer draft ranking heuristics, expanded ADK Skill resources and scripts, downstream execution handoff improvements
 - intentionally generic: SUT-specific behavior belongs in manifests, generated tasks, or optional profiles, not in crawler defaults
 
 ## Goal
@@ -27,13 +27,13 @@ Build an ADK-based agent that behaves like a lightweight browser QA assistant:
 - inspect the current project for existing conventions
 - open a browser session with `--headed` and `--persistent`
 - explore guest, signed-in, and admin routes
-- write structured outputs such as route manifests, navigation tasks, and action tasks
+- write structured outputs such as route manifests, navigation tasks, page summaries, and draft backlogs
 - optionally validate generated outputs against simple coverage and navigation rules
 
 The target output strategy is two-stage:
 
 1. Generate route coverage tasks (for example, `Navigate to Employees`) from discovered routes.
-2. Revisit canonical discovered routes with `playwright-cli`, inspect the live UI, infer page-level actions from observed evidence, and generate workflow tasks.
+2. Revisit canonical discovered routes with `playwright-cli`, inspect the live UI, summarize each page with Vertex, and draft page-level cases from observed evidence for later human refinement and downstream execution.
 
 ## Recommended Stack
 
@@ -173,12 +173,12 @@ The first implementation should target one site at a time and one browser sessio
 - signed-in route discovery
 - route manifest generation
 - navigation task generation from accepted routes
-- basic page-action intent detection metadata
+- browser-backed page observation for LLM task drafting
 - basic validation of generated tasks
 
 ### Later
 
-- action-task generation (for create/edit/search/filter workflows)
+- richer human-review workflows over draft backlogs
 - skillized workflow presets for common operator tasks
 - direct Playwright test generation
 - auto-repair of selectors
