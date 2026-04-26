@@ -92,6 +92,7 @@ class VertexGenAIAdapter:
                         temperature=temperature,
                         max_output_tokens=max_output_tokens,
                         response_mime_type="application/json",
+                        thinking_config=types.ThinkingConfig(thinking_budget=0),
                     ),
                 )
                 last_error = None

@@ -8,6 +8,7 @@ from typing import Any
 
 from adk_playwright_agent.adapters.vertex_genai import VertexGenAIAdapter
 from adk_playwright_agent.app.policies import resolve_workspace_path
+from adk_playwright_agent.app.page_artifact_prompting import compact_page_artifact_for_prompt
 from adk_playwright_agent.app.vertex_prompts import PAGE_SUMMARY_PROMPT
 
 try:
@@ -121,12 +122,20 @@ def summarize_pages_with_vertex(
 
 
 def _page_summary_prompt(site_name: str, page_payload: dict[str, Any]) -> str:
+    prompt_payload = compact_page_artifact_for_prompt(
+        page_payload,
+        max_forms=20,
+        max_tables=10,
+        snapshot_head_lines=120,
+        snapshot_tail_lines=30,
+        snapshot_char_limit=10000,
+    )
     return "\n\n".join(
         [
             PAGE_SUMMARY_PROMPT,
             f"SITE_NAME: {site_name}",
             "PAGE_ARTIFACT:",
-            _render_page_payload(page_payload),
+            _render_page_payload(prompt_payload),
         ]
     )
 

@@ -9,6 +9,7 @@ from typing import Any
 
 from adk_playwright_agent.adapters.vertex_genai import VertexGenAIAdapter
 from adk_playwright_agent.app.policies import resolve_workspace_path
+from adk_playwright_agent.app.page_artifact_prompting import compact_page_artifact_for_prompt
 from adk_playwright_agent.app.vertex_prompts import DRAFT_TEST_CASES_PROMPT
 from adk_playwright_agent.tools.action_task_tools import consolidate_task_drafts_to_backlog
 
@@ -212,11 +213,19 @@ def merge_page_drafts(
 
 
 def _draft_prompt(site_name: str, page_payload: dict[str, Any], summary_payload: dict[str, Any]) -> str:
+    prompt_payload = compact_page_artifact_for_prompt(
+        page_payload,
+        max_forms=24,
+        max_tables=12,
+        snapshot_head_lines=140,
+        snapshot_tail_lines=35,
+        snapshot_char_limit=12000,
+    )
     parts = [
         DRAFT_TEST_CASES_PROMPT,
         f"SITE_NAME: {site_name}",
         "PAGE_ARTIFACT:",
-        _render_page_payload(page_payload),
+        _render_page_payload(prompt_payload),
     ]
     if summary_payload:
         parts.extend(
