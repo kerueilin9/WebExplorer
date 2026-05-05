@@ -219,7 +219,7 @@ Important fields:
 
 Purpose:
 
-- page-level candidate cases before dedupe
+- page-level candidate task payloads before dedupe
 
 Important fields:
 
@@ -228,17 +228,49 @@ Important fields:
 - `plain_language_summary`
 - `drafts`
 
-Each draft should keep:
+Each item in `drafts` is now a task-shaped draft payload for downstream web
+agents. It intentionally mirrors the AgentOccam-style task JSON shape while
+remaining a human-reviewable draft:
 
-- `draft_id`
-- `title`
-- `goal`
-- `category`
-- `priority`
-- `risk`
-- `rough_steps`
-- `evidence`
-- `notes_for_human`
+```json
+{
+  "sites": ["timeoff"],
+  "task_id": "timeoff_task_create_users_add_01",
+  "require_login": true,
+  "storage_state": ".auth/timeoff_state.json",
+  "start_url": "http://localhost:3102",
+  "geolocation": null,
+  "gherkin": {
+    "feature": "Timeoff Draft Tasks",
+    "scenario": "Create employee",
+    "given": ["I am logged in to the site"],
+    "when": [
+      "I open the configured home page",
+      "I click the \"Employees\" link to reach \"/users\"",
+      "I fill in Email with valid value"
+    ],
+    "then": [
+      "The page should support \"Create employee\"",
+      "The current URL should contain \"/users/add\""
+    ]
+  },
+  "intent_template_id": 0,
+  "require_reset": true,
+  "eval": {
+    "eval_types": ["gherkin_criteria"],
+    "reference_answers": {
+      "gherkin_acceptance_criteria": [
+        "The page should support \"Create employee\"",
+        "The current URL should contain \"/users/add\""
+      ]
+    }
+  }
+}
+```
+
+Draft generation still lets Vertex propose rough page ideas first. The tool
+normalizes those ideas into this task shape, including navigation steps and
+`I fill in <field> with valid value` wording for fill actions.
 
 ### Draft Backlog
 
@@ -252,7 +284,9 @@ Important fields:
 - `tasks`
 - `skipped_drafts`
 
-This is the main downstream handoff artifact for the current page-draft system.
+`tasks` contains the same task-shaped draft payloads from the per-page draft
+files after dedupe/category filtering. This is the main downstream handoff
+artifact for human refinement and later execution.
 
 ## Draft Retention Policy
 
@@ -263,14 +297,15 @@ The current pipeline keeps and prioritizes:
 - `delete`
 - `filter`
 - `search`
-- `export`
-- `import`
-- `auth_session`
 
 The current pipeline excludes:
 
 - `navigate`
 - simple `open`
+- `export`
+- `import`
+- `auth_session`
+- `unknown`
 
 For pages with one clear primary form workflow, draft reduction favors one
 happy-path variant instead of many invalid/empty/minimal variations.

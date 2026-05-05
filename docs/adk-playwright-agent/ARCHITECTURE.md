@@ -11,11 +11,11 @@ Its current job is:
 - generate route-level navigation tasks
 - revisit canonical routes as live pages
 - summarize each page with Vertex
-- produce human-reviewable draft cases
+- produce human-reviewable, task-shaped draft cases
 
 Its current job is not:
 
-- generate final executable action tasks
+- generate fully reviewed final action tasks
 - fully execute create/edit/delete workflows
 - optimize for one SUT such as TimeOff, NodeBB, or Keystone
 
@@ -66,7 +66,7 @@ Purpose:
 
 - understand each canonical page as a live UI
 - summarize page intent in plain language
-- propose evidence-backed draft cases for human review
+- propose evidence-backed task-shaped draft cases for human review
 
 ## Core Design Decisions
 
@@ -106,11 +106,12 @@ This repo currently stops at:
 
 - route navigation tasks
 - page summaries
-- page draft cases
+- page draft cases shaped like downstream task JSON
 - consolidated draft backlog
 
-It does not attempt to author final executable action-task JSON for create/edit
-flows.
+It does not claim those draft cases are final executable create/edit/delete
+workflows. They are intentionally shaped for downstream web agents, then left
+for human refinement.
 
 ## Main Runtime Pieces
 
@@ -173,21 +174,22 @@ amount of supporting structured evidence.
 
 ## Draft Case Policy
 
-The retained draft backlog should favor:
+The retained task-shaped draft backlog should favor:
 
 - `create`
 - `edit`
 - `delete`
 - `filter`
 - `search`
-- `export`
-- `import`
-- `auth_session`
 
 The current pipeline intentionally filters out:
 
 - `navigate`
 - simple `open`
+- `export`
+- `import`
+- `auth_session`
+- `unknown`
 
 For pages with one clear primary form submission, the pipeline tries to keep one
 happy-path draft instead of many invalid/empty/minimal input variants.

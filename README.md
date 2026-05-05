@@ -290,10 +290,10 @@ The batch generator writes `task_*.json` files, preserves the manifest navigatio
 
 ## Vertex-Backed Draft Cases
 
-Action discovery now targets human-reviewable draft cases instead of final
-executable action tasks. This system is meant to help understand a SUT and
-prepare draft cases for later refinement and downstream execution by another
-web agent.
+Action discovery now targets human-reviewable, task-shaped draft cases instead
+of final reviewed action tasks. This system is meant to help understand a SUT
+and prepare draft cases for later refinement and downstream execution by
+another web agent.
 
 ```text
 route manifest
@@ -324,16 +324,18 @@ action records.
 can skim the SUT quickly.
 
 `draft_test_ideas_with_vertex` reads the page artifact plus optional page
-summary and produces per-page draft cases. These drafts should favor recall over
-polish and stay grounded in visible evidence. Pure route-to-route navigation
-drafts and simple page-entry `open` drafts are intentionally excluded because
-route navigation is already covered elsewhere. For a page with one clear primary
-form submission, keep one happy-path draft instead of many invalid/empty input
-variants.
+summary and produces per-page draft cases. The tool normalizes each kept draft
+into an AgentOccam-style task JSON payload under `drafts`, including
+`gherkin`, `eval`, `require_login`, `storage_state`, and `start_url`. Fill
+steps are normalized to `I fill in <field> with valid value`. Pure route-to-route
+navigation drafts and simple page-entry `open` drafts are intentionally
+excluded because route navigation is already covered elsewhere. For a page with
+one clear primary form submission, keep one happy-path draft instead of many
+invalid/empty input variants.
 
-`merge_page_drafts` combines per-page drafts into a single deduped
+`merge_page_drafts` combines per-page task-shaped drafts into a single deduped
 `draft_backlog.json` for human refinement. This backlog is the main output of
-the current system.
+the current system, but it is still considered draft-quality until reviewed.
 
 Example ADK prompt:
 

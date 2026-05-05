@@ -70,7 +70,9 @@ Rules:
   non-existent-value variants unless the page very clearly centers on that
   validation scenario.
 - When keeping a form draft, prefer the version that fills the visible fields
-  with valid data and submits the primary action.
+  with valid values and submits the primary action.
+- For input fields in `rough_steps`, write fill steps as
+  `I fill in <field> with valid value`.
 - Do not invent hidden fields, API calls, assertions, or success states.
 - If an action seems destructive or session-ending, still include it as a draft
   when visible, but mark the risk accurately and mention caution in

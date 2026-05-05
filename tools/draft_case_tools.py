@@ -7,6 +7,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from adk_playwright_agent.adapters.vertex_genai import VertexGenAIAdapter
 from adk_playwright_agent.app.policies import resolve_workspace_path
@@ -190,6 +191,18 @@ def merge_page_drafts(
     temp_raw_file.parent.mkdir(parents=True, exist_ok=True)
     temp_raw_file.write_text(json.dumps(raw_payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
+    if all(_is_task_payload(draft) for draft in raw_drafts):
+        return _merge_task_payload_drafts(
+            drafts=raw_drafts,
+            destination=destination,
+            draft_index_file=draft_index_file,
+            site_name=str(site_name or draft_index.get("site_name") or "webapp"),
+            page_count=page_count,
+            max_drafts=max_drafts,
+            include_categories=include_categories,
+            exclude_categories=_merge_exclude_categories(exclude_categories),
+        )
+
     backlog_result = consolidate_task_drafts_to_backlog(
         drafts_path=str(temp_raw_file),
         output_path=str(destination),
@@ -252,7 +265,7 @@ def _normalize_page_drafts(
 ) -> dict[str, Any]:
     route = page_payload.get("route", {}) if isinstance(page_payload.get("route"), dict) else {}
     drafts = model_payload.get("drafts", [])
-    normalized: list[dict[str, Any]] = []
+    normalized_ideas: list[dict[str, Any]] = []
     if isinstance(drafts, list):
         for index, draft in enumerate(drafts, start=1):
             if not isinstance(draft, dict):
@@ -265,7 +278,7 @@ def _normalize_page_drafts(
             draft_id = str(draft.get("draft_id") or f"{site_name}_{_slug(category)}_{_slug(goal)}_{index:02d}")
             if not category or category in _EXCLUDED_DRAFT_CATEGORIES:
                 continue
-            normalized.append(
+            normalized_ideas.append(
                 {
                     "draft_id": draft_id,
                     "route": str(route.get("canonical_path") or route.get("path") or "/"),
@@ -282,8 +295,17 @@ def _normalize_page_drafts(
                     "dedupe_key": str(draft.get("dedupe_key") or f"{site_name}|{category}|{route.get('canonical_path') or route.get('path') or '/'}|{_normalize_text(title or goal)}"),
                 }
             )
-    normalized = _reduce_input_variants(page_payload=page_payload, drafts=normalized)
+    normalized_ideas = _reduce_input_variants(page_payload=page_payload, drafts=normalized_ideas)
     baseline = page_payload.get("baseline", {}) if isinstance(page_payload.get("baseline"), dict) else {}
+    task_drafts = [
+        _task_payload_from_draft_idea(
+            site_name=site_name,
+            page_payload=page_payload,
+            draft=idea,
+            index=index,
+        )
+        for index, idea in enumerate(normalized_ideas, start=1)
+    ]
     return {
         "schema_version": "1.0",
         "page_id": str(page_payload.get("page_id") or ""),
@@ -292,7 +314,7 @@ def _normalize_page_drafts(
         "title": str(baseline.get("title") or ""),
         "navigation_steps": _string_list(route.get("navigation_steps")),
         "plain_language_summary": str(summary_payload.get("plain_language_summary") or ""),
-        "drafts": normalized,
+        "drafts": task_drafts,
         "source_page_artifact": str(page_payload.get("_source_path") or ""),
     }
 
@@ -324,6 +346,237 @@ def _load_summary_index(summary_index_path: str | None) -> dict[str, dict[str, A
         if isinstance(summary_payload, dict):
             result[str(summary_payload.get("page_id") or item.get("page_id") or "")] = summary_payload
     return result
+
+
+def _task_payload_from_draft_idea(
+    *,
+    site_name: str,
+    page_payload: dict[str, Any],
+    draft: dict[str, Any],
+    index: int,
+) -> dict[str, Any]:
+    route = page_payload.get("route", {}) if isinstance(page_payload.get("route"), dict) else {}
+    baseline = page_payload.get("baseline", {}) if isinstance(page_payload.get("baseline"), dict) else {}
+    route_path = str(route.get("canonical_path") or route.get("path") or draft.get("route") or "/")
+    category = str(draft.get("category") or "task")
+    title = str(draft.get("title") or draft.get("goal") or "Draft task").strip()
+    goal = str(draft.get("goal") or title).strip()
+    require_login = bool(route.get("require_login"))
+    start_url = _origin_from_url(
+        str(route.get("selected_url") or baseline.get("url") or "")
+    )
+    then_steps = _task_then_steps(route_path=route_path, title=title, draft=draft)
+
+    return {
+        "sites": [site_name],
+        "task_id": f"{site_name}_task_{_slug(category)}_{_route_slug(route_path)}_{index:02d}",
+        "require_login": require_login,
+        "storage_state": f".auth/{site_name}_state.json" if require_login else None,
+        "start_url": start_url,
+        "geolocation": None,
+        "gherkin": {
+            "feature": f"{_title_text(site_name)} Draft Tasks",
+            "scenario": title,
+            "given": _task_given_steps(require_login=require_login),
+            "when": _task_when_steps(
+                navigation_steps=_string_list(route.get("navigation_steps")),
+                rough_steps=_string_list(draft.get("rough_steps")),
+                forms=page_payload.get("forms", []),
+            ),
+            "then": then_steps,
+        },
+        "intent_template_id": 0,
+        "require_reset": category in {"create", "edit", "delete"},
+        "eval": {
+            "eval_types": ["gherkin_criteria"],
+            "reference_answers": {
+                "gherkin_acceptance_criteria": then_steps,
+            },
+        },
+    }
+
+
+def _task_given_steps(*, require_login: bool) -> list[str]:
+    if require_login:
+        return ["I am logged in to the site"]
+    return ["I open the public site"]
+
+
+def _task_when_steps(*, navigation_steps: list[str], rough_steps: list[str], forms: Any) -> list[str]:
+    steps: list[str] = []
+    steps.extend(navigation_steps or ["I open the configured home page"])
+    for step in rough_steps:
+        steps.extend(_normalize_gherkin_when_step(step, forms=forms))
+    return [step for step in steps if step]
+
+
+def _normalize_gherkin_when_step(step: str, *, forms: Any) -> list[str]:
+    text = step.strip().rstrip(".")
+    if not text:
+        return []
+    if _is_generic_fill_step(text):
+        expanded = _fill_steps_from_forms(forms)
+        if expanded:
+            return expanded
+    fill_match = re.match(
+        r"^(?:i\s+)?(?:fill|enter|type)(?:\s+in)?\s+['\"]?(.+?)['\"]?\s+(?:with|as|to)\s+['\"]?(.+?)['\"]?$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if fill_match:
+        field = fill_match.group(1).strip()
+        return [f"I fill in {field} with valid value"]
+    if text.lower().startswith("i "):
+        return [text[0].upper() + text[1:]]
+    return [f"I {text[0].lower() + text[1:]}"]
+
+
+def _is_generic_fill_step(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return normalized in {
+        "fill required fields",
+        "fill all fields",
+        "fill all visible fields",
+        "fill available fields",
+        "fill all available fields",
+        "fill the form",
+        "fill required form fields",
+    }
+
+
+def _fill_steps_from_forms(forms: Any) -> list[str]:
+    if not isinstance(forms, list):
+        return []
+    steps: list[str] = []
+    for form in forms:
+        if not isinstance(form, dict):
+            continue
+        if str(form.get("disabled") or "").lower() == "true":
+            continue
+        field = _form_field_name(form)
+        if not field:
+            continue
+        steps.append(f"I fill in {field} with valid value")
+    return steps
+
+
+def _form_field_name(form: dict[str, Any]) -> str:
+    for key in ("label", "name", "placeholder", "aria_label"):
+        value = str(form.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _task_then_steps(*, route_path: str, title: str, draft: dict[str, Any]) -> list[str]:
+    candidates = _string_list(draft.get("then")) or _string_list(draft.get("assertions"))
+    if candidates:
+        return candidates
+    steps = [f'The page should support "{title}"']
+    if route_path and route_path != "/":
+        steps.append(f'The current URL should contain "{route_path}"')
+    return steps
+
+
+def _origin_from_url(url: str) -> str:
+    parsed = urlsplit(url)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return url
+
+
+def _route_slug(route_path: str) -> str:
+    return _slug(route_path.strip("/") or "home")
+
+
+def _title_text(value: str) -> str:
+    return " ".join(part.capitalize() for part in re.split(r"[_\-\s]+", value) if part) or "Webapp"
+
+
+def _is_task_payload(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    gherkin = value.get("gherkin")
+    return (
+        isinstance(gherkin, dict)
+        and isinstance(value.get("sites"), list)
+        and isinstance(value.get("task_id"), str)
+        and isinstance(gherkin.get("given"), list)
+        and isinstance(gherkin.get("when"), list)
+        and isinstance(gherkin.get("then"), list)
+    )
+
+
+def _merge_task_payload_drafts(
+    *,
+    drafts: list[dict[str, Any]],
+    destination: Path,
+    draft_index_file: Path,
+    site_name: str,
+    page_count: int,
+    max_drafts: int | None,
+    include_categories: str | None,
+    exclude_categories: str | None,
+) -> dict[str, Any]:
+    include = _parse_category_filter(include_categories)
+    exclude = _parse_category_filter(exclude_categories)
+    tasks: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    skipped: list[dict[str, Any]] = []
+
+    for draft in drafts:
+        category = _category_from_task_id(str(draft.get("task_id") or ""))
+        if include and category not in include:
+            skipped.append({"task_id": draft.get("task_id"), "reason": "include_category_mismatch"})
+            continue
+        if exclude and category in exclude:
+            skipped.append({"task_id": draft.get("task_id"), "reason": "exclude_category_match"})
+            continue
+        task_id = str(draft.get("task_id") or "")
+        if not task_id or task_id in seen:
+            skipped.append({"task_id": task_id, "reason": "duplicate_task_id"})
+            continue
+        seen.add(task_id)
+        tasks.append(draft)
+        if max_drafts is not None and len(tasks) >= max_drafts:
+            break
+
+    payload = {
+        "schema_version": "1.0",
+        "site_name": site_name,
+        "source_draft_index_path": str(draft_index_file),
+        "summary": {
+            "page_count": page_count,
+            "raw_draft_count": len(drafts),
+            "backlog_count": len(tasks),
+            "skipped_count": len(skipped),
+        },
+        "tasks": tasks,
+        "skipped_drafts": skipped,
+    }
+    destination.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return {
+        "ok": True,
+        "output_path": str(destination),
+        "site_name": site_name,
+        "page_count": page_count,
+        "raw_draft_count": len(drafts),
+        "backlog_count": len(tasks),
+        "skipped_count": len(skipped),
+    }
+
+
+def _parse_category_filter(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {part.strip().lower() for part in value.split(",") if part.strip()}
+
+
+def _category_from_task_id(task_id: str) -> str:
+    match = re.search(r"_task_([^_]+)_", task_id)
+    if not match:
+        return ""
+    return match.group(1)
 
 
 def _load_page_artifact(path: Path) -> dict[str, Any] | None:

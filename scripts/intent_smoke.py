@@ -127,7 +127,15 @@ def main() -> None:
     assert "navigation_steps" in first_draft_page
     assert any(payload["navigation_steps"] for payload in draft_payloads)
     assert first_draft_page["drafts"]
-    assert "notes_for_human" in first_draft_page["drafts"][0]
+    assert "gherkin" in first_draft_page["drafts"][0]
+    assert "eval" in first_draft_page["drafts"][0]
+    create_page = next(payload for payload in draft_payloads if payload["route"] == "/users/add")
+    create_task = create_page["drafts"][0]
+    assert create_task["sites"] == ["sample"]
+    assert create_task["require_login"] is True
+    assert create_task["storage_state"] == ".auth/sample_state.json"
+    assert any(step.startswith("I fill in ") for step in create_task["gherkin"]["when"])
+    assert create_task["eval"]["reference_answers"]["gherkin_acceptance_criteria"] == create_task["gherkin"]["then"]
 
     backlog_result = draft_case_tools.merge_page_drafts(
         draft_index_path="adk_playwright_agent/.adk/page_drafts.index.json",
@@ -136,15 +144,12 @@ def main() -> None:
     )
     _LOGGER.info(json.dumps(backlog_result, indent=2))
     backlog = json.loads(Path(backlog_result["output_path"]).read_text(encoding="utf-8"))
-    backlog_by_category = {task["category"]: task for task in backlog["tasks"]}
 
     assert backlog_result["ok"] is True
     assert backlog_result["raw_draft_count"] == 4
-    assert backlog_result["backlog_count"] == 3
-    assert backlog_by_category["create"]["priority"] == "P0"
-    assert backlog_by_category["filter"]["execution_policy"] == "execute_read_only"
-    assert backlog_by_category["delete"]["execution_policy"] == "dry_run_open_confirm"
-    assert backlog_by_category["delete"]["execution_order"] > backlog_by_category["create"]["execution_order"]
+    assert backlog_result["backlog_count"] == 4
+    assert all("gherkin" in task for task in backlog["tasks"])
+    assert any(task["task_id"].startswith("sample_task_create_") for task in backlog["tasks"])
 
 
 class _FakeActionDiscoveryAdapter:

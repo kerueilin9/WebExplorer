@@ -9,8 +9,9 @@ compatibility: google-adk>=1.31.0,<2.0
 Use this skill when the user asks to generate page-level draft cases from a
 generic SUT. Keep the workflow generic across SUTs. The preferred path is
 Vertex-backed and evidence-first: tools collect page observations, summarize
-each observed page, propose draft cases from the full page artifact, and merge
-those drafts into a prioritized backlog for human refinement.
+each observed page, propose draft cases from the full page artifact, normalize
+those drafts into task-shaped JSON, and merge them into a backlog for human
+refinement.
 
 ## Required Inputs
 
@@ -46,17 +47,16 @@ those drafts into a prioritized backlog for human refinement.
    `plain_language_summary` plus structured fields such as page purpose,
    entities, key forms/actions, likely user goals, and risk notes.
 4. Call `draft_test_ideas_with_vertex` to generate one `page-*.drafts.json`
-   file per observed page. Drafts may be short and incomplete, but each draft
-   should include category, risk, priority, rough goal, route, evidence, and
-   notes for human refinement. Do not keep pure `navigate` drafts or simple
-   `open` drafts that only exercise site-wide navigation or page-entry links
-   already covered elsewhere. For pages with one clear primary form workflow,
-   keep one happy-path draft instead of many invalid/empty/minimal variants.
-5. Call `merge_page_drafts` to dedupe page-level drafts, normalize
-   category/risk/priority, and produce `draft_backlog.json`.
-6. Stop at the draft backlog. This system does not generate final executable
-   action tasks. The backlog is intended for human review and downstream
-   execution in another web agent.
+   file per observed page. Vertex may propose short rough ideas, but the tool
+   normalizes each kept idea into task-shaped JSON under `drafts`. Do not keep
+   pure `navigate`, simple `open`, `export`, `import`, `auth_session`, or
+   `unknown` drafts. For pages with one clear primary form workflow, keep one
+   happy-path draft instead of many invalid/empty/minimal variants.
+5. Call `merge_page_drafts` to dedupe page-level task-shaped drafts and produce
+   `draft_backlog.json`.
+6. Stop at the draft backlog. The output is intentionally still draft-quality:
+   it is shaped like executable task JSON, but it is meant for human review and
+   downstream execution in another web agent.
 
 ## LLM-First Discovery Sequence
 
@@ -75,46 +75,51 @@ Use this sequence when action tasks are not ready yet:
 
 ## Draft Task Shape
 
-When producing page-level draft cases, use this shape. Drafts do not need final
-assertions or executable task JSON:
+Each item under `page-*.drafts.json` -> `drafts` should use this task-shaped
+payload. Keep it grounded in the observed page. Fill actions must use
+`I fill in <field> with valid value` wording:
 
 ```json
 {
-  "page_id": "page-001",
-  "route": "/users/add",
-  "plain_language_summary": "這頁主要是新增員工資料的表單頁面。",
-  "drafts": [
-    {
-      "draft_id": "timeoff_users_add_create_employee",
-      "title": "Create employee",
-      "goal": "建立新員工資料",
-      "category": "create",
-      "priority": "P0",
-      "risk": "state_changing_safe",
-      "rough_steps": [
-        "Open Add employee page.",
-        "Fill required employee fields.",
-        "Submit the form."
-      ],
-      "evidence": [
-        "The page shows an Add employee heading.",
-        "A create button is visible."
-      ],
-      "notes_for_human": [
-        "Need disposable employee test data.",
-        "Success assertion is not finalized yet."
+  "sites": ["timeoff"],
+  "task_id": "timeoff_task_create_users_add_01",
+  "require_login": true,
+  "storage_state": ".auth/timeoff_state.json",
+  "start_url": "http://localhost:3102",
+  "geolocation": null,
+  "gherkin": {
+    "feature": "Timeoff Draft Tasks",
+    "scenario": "Create employee",
+    "given": ["I am logged in to the site"],
+    "when": [
+      "I open the configured home page",
+      "I click the \"Employees\" link to reach \"/users\"",
+      "I fill in Email with valid value"
+    ],
+    "then": [
+      "The page should support \"Create employee\"",
+      "The current URL should contain \"/users/add\""
+    ]
+  },
+  "intent_template_id": 0,
+  "require_reset": true,
+  "eval": {
+    "eval_types": ["gherkin_criteria"],
+    "reference_answers": {
+      "gherkin_acceptance_criteria": [
+        "The page should support \"Create employee\"",
+        "The current URL should contain \"/users/add\""
       ]
     }
-  ]
+  }
 }
 ```
 
-Prefer category values: `create`, `edit`, `delete`, `filter`, `search`,
-`export`, `import`, `auth_session`, or `unknown`.
+Keep category intent in `task_id` as `site_task_<category>_...`. Supported
+categories are `create`, `edit`, `delete`, `filter`, and `search`.
 
-Keep `priority` separate from downstream execution order. `delete` can be high
-priority because it matters, but it should remain a draft until a later system
-decides how to execute it safely.
+`delete` can be high-value as a draft, but it should remain reviewed by a human
+before any later system executes it.
 
 ## Safe Defaults
 
