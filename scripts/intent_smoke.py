@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
 
+from adk_playwright_agent.app.logging import configure_logging
 from adk_playwright_agent.app.models import CommandResult
 from adk_playwright_agent.tools import action_task_tools, draft_case_tools, page_summary_tools
 
@@ -15,8 +17,11 @@ try:
 except ImportError:  # pragma: no cover - dependency guard
     yaml = None
 
+_LOGGER = logging.getLogger(__name__)
+
 
 def main() -> None:
+    configure_logging()
     project_root = Path(__file__).resolve().parents[1]
     load_dotenv(project_root / ".env")
 
@@ -25,7 +30,7 @@ def main() -> None:
         output_path="adk_playwright_agent/.adk/action_worklist.json",
         site_name="sample",
     )
-    print(json.dumps(worklist_result, indent=2))
+    _LOGGER.info(json.dumps(worklist_result, indent=2))
 
     worklist_path = Path(worklist_result["output_path"])
     worklist = json.loads(worklist_path.read_text(encoding="utf-8"))
@@ -54,7 +59,7 @@ def main() -> None:
     finally:
         action_task_tools._ADAPTER = previous_adapter
 
-    print(json.dumps(observation_result, indent=2))
+    _LOGGER.info(json.dumps(observation_result, indent=2))
     observation_index = json.loads(Path(observation_result["output_path"]).read_text(encoding="utf-8"))
     observation_files = [Path(path) for path in observation_index["observation_files"]]
     first_observation = _load_page_artifact(observation_files[0])
@@ -81,7 +86,7 @@ def main() -> None:
     finally:
         page_summary_tools._VERTEX = previous_vertex
 
-    print(json.dumps(summary_result, indent=2))
+    _LOGGER.info(json.dumps(summary_result, indent=2))
     summary_index = json.loads(Path(summary_result["summary_index_path"]).read_text(encoding="utf-8"))
     first_summary = json.loads(Path(summary_index["summaries"][0]["path"]).read_text(encoding="utf-8"))
     summary_payloads = [
@@ -109,7 +114,7 @@ def main() -> None:
     finally:
         draft_case_tools._VERTEX = previous_vertex
 
-    print(json.dumps(draft_result, indent=2))
+    _LOGGER.info(json.dumps(draft_result, indent=2))
     draft_index = json.loads(Path(draft_result["draft_index_path"]).read_text(encoding="utf-8"))
     first_draft_page = json.loads(Path(draft_index["draft_pages"][0]["path"]).read_text(encoding="utf-8"))
     draft_payloads = [
@@ -129,7 +134,7 @@ def main() -> None:
         output_path="adk_playwright_agent/.adk/draft_backlog.json",
         site_name="sample",
     )
-    print(json.dumps(backlog_result, indent=2))
+    _LOGGER.info(json.dumps(backlog_result, indent=2))
     backlog = json.loads(Path(backlog_result["output_path"]).read_text(encoding="utf-8"))
     backlog_by_category = {task["category"]: task for task in backlog["tasks"]}
 

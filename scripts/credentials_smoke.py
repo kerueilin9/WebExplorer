@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,12 +12,16 @@ from adk_playwright_agent.adapters.credentials import (
     CredentialsError,
     load_named_credentials,
 )
+from adk_playwright_agent.app.logging import configure_logging
 from adk_playwright_agent.tools.browser_tools import login_from_notes
 from adk_playwright_agent.tools.crawler_tools import _perform_login
 from adk_playwright_agent.app.context_memory import CrawlerContext
 
+_LOGGER = logging.getLogger(__name__)
+
 
 def main() -> None:
+    configure_logging()
     project_root = Path(__file__).resolve().parents[1]
     load_dotenv(project_root / ".env")
 
@@ -52,7 +57,7 @@ def main() -> None:
         context=CrawlerContext(),
     )
 
-    print(
+    _LOGGER.info(
         json.dumps(
             {
                 "loader_result": loader_result,

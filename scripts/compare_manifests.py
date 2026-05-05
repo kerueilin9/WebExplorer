@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from collections import Counter
 from pathlib import Path
 
+from adk_playwright_agent.app.logging import configure_logging
+
+_LOGGER = logging.getLogger(__name__)
+
 
 def main() -> None:
+    configure_logging()
     args = _parse_args()
     guest_path = Path(args.guest_manifest).resolve()
     auth_path = Path(args.authenticated_manifest).resolve()
@@ -40,7 +46,7 @@ def main() -> None:
             for route in guest_only[:20]
         ],
     }
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    _LOGGER.info(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def _parse_args() -> argparse.Namespace:

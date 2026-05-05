@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
 
+from adk_playwright_agent.app.logging import configure_logging
 from adk_playwright_agent.tools.generator_tools import (
     generate_tasks_from_manifest,
     write_route_manifest,
 )
 from adk_playwright_agent.tools.validation_tools import validate_task_directory
 
+_LOGGER = logging.getLogger(__name__)
+
 
 def main() -> None:
+    configure_logging()
     project_root = Path(__file__).resolve().parents[1]
     load_dotenv(project_root / ".env")
 
@@ -24,7 +29,7 @@ def main() -> None:
     routes = json.loads(routes_path.read_text(encoding="utf-8"))
     result = write_route_manifest(output_path=output_path, routes_json=json.dumps(routes))
 
-    print(json.dumps({"manifest_result": result}, indent=2))
+    _LOGGER.info(json.dumps({"manifest_result": result}, indent=2))
 
     task_result = generate_tasks_from_manifest(
         manifest_path=output_path,
@@ -34,13 +39,13 @@ def main() -> None:
         task_id_prefix="sample",
         max_tasks=1,
     )
-    print(json.dumps({"task_generation_result": task_result}, indent=2))
+    _LOGGER.info(json.dumps({"task_generation_result": task_result}, indent=2))
 
     validation = validate_task_directory(
         directory="adk_playwright_agent/.adk/generated_tasks",
         expected_start_url="http://localhost:3101",
     )
-    print(json.dumps({"validation_probe": validation}, indent=2))
+    _LOGGER.info(json.dumps({"validation_probe": validation}, indent=2))
 
 
 if __name__ == "__main__":

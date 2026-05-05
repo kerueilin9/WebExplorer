@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
+from adk_playwright_agent.app.logging import configure_logging
 from adk_playwright_agent.tools import workflow_tools
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def main() -> None:
+    configure_logging()
     project_root = Path(__file__).resolve().parents[1]
     load_dotenv(project_root / ".env")
 
@@ -32,7 +37,7 @@ def main() -> None:
         persistent=False,
     )
 
-    print(json.dumps(result, indent=2))
+    _LOGGER.info(json.dumps(result, indent=2))
 
     assert result["ok"] is True
     assert result["summary"]["guest_generated_count"] == 3

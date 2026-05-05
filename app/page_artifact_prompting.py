@@ -14,9 +14,7 @@ def compact_page_artifact_for_prompt(
     *,
     max_forms: int = 20,
     max_tables: int = 10,
-    snapshot_head_lines: int = 140,
-    snapshot_tail_lines: int = 40,
-    snapshot_char_limit: int = 12000,
+    max_options_per_group: int = 3,
 ) -> dict[str, Any]:
     """Return a prompt-friendly subset of a page artifact."""
 
@@ -30,18 +28,17 @@ def compact_page_artifact_for_prompt(
     if isinstance(snapshot, dict):
         raw_content = str(snapshot.get("content") or "")
         normalized_content = _normalize_snapshot_content(raw_content)
-        compacted_content, truncated = _compact_snapshot_content(
+        compacted_content, compacted_options_count = _compact_snapshot_options(
             normalized_content,
-            head_lines=snapshot_head_lines,
-            tail_lines=snapshot_tail_lines,
-            char_limit=snapshot_char_limit,
+            max_options_per_group=max_options_per_group,
         )
         compacted["page_snapshot"] = {
             "source": snapshot.get("source") or "",
             "path": snapshot.get("path") or "",
             "content": compacted_content,
-            "content_truncated": truncated,
+            "option_groups_compacted": compacted_options_count,
             "original_char_count": len(normalized_content),
+            "compacted_char_count": len(compacted_content),
         }
 
     forms = page_payload.get("forms")
@@ -73,31 +70,65 @@ def _normalize_snapshot_content(content: str) -> str:
     return content
 
 
-def _compact_snapshot_content(
+def _compact_snapshot_options(
     content: str,
     *,
-    head_lines: int,
-    tail_lines: int,
-    char_limit: int,
-) -> tuple[str, bool]:
+    max_options_per_group: int,
+) -> tuple[str, int]:
     if not content:
-        return "", False
+        return "", 0
 
     lines = content.splitlines()
-    truncated = False
+    compacted_lines: list[str] = []
+    group: list[str] = []
+    compacted_group_count = 0
 
-    if len(lines) > head_lines + tail_lines:
-        kept_lines = lines[:head_lines] + ["... [snapshot truncated] ..."] + lines[-tail_lines:]
-        content = "\n".join(kept_lines)
-        truncated = True
+    for line in lines:
+        if _is_option_line(line):
+            group.append(line)
+            continue
+        compacted_group_count += _flush_option_group(
+            group,
+            compacted_lines,
+            max_options_per_group=max_options_per_group,
+        )
+        group = []
+        compacted_lines.append(line)
 
-    if len(content) > char_limit:
-        head_chars = max(1, (char_limit - 24) // 2)
-        tail_chars = max(1, char_limit - 24 - head_chars)
-        content = f"{content[:head_chars]}\n... [snapshot truncated] ...\n{content[-tail_chars:]}"
-        truncated = True
+    compacted_group_count += _flush_option_group(
+        group,
+        compacted_lines,
+        max_options_per_group=max_options_per_group,
+    )
 
-    return content, truncated
+    return "\n".join(compacted_lines), compacted_group_count
+
+
+def _flush_option_group(
+    group: list[str],
+    output: list[str],
+    *,
+    max_options_per_group: int,
+) -> int:
+    if not group:
+        return 0
+    limit = max(0, max_options_per_group)
+    if len(group) <= limit:
+        output.extend(group)
+        return 0
+    output.extend(group[:limit])
+    skipped_count = len(group) - limit
+    indent = group[0][: len(group[0]) - len(group[0].lstrip())]
+    output.append(f"{indent}... [{skipped_count} options omitted] ...")
+    return 1
+
+
+def _is_option_line(line: str) -> bool:
+    stripped = line.lstrip()
+    if not stripped.startswith("- "):
+        return False
+    option_text = stripped[2:].lstrip("'\"")
+    return option_text.startswith("option ")
 
 
 def _pick_keys(item: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:

@@ -45,7 +45,7 @@ class VertexGenAIAdapter:
         self,
         *,
         prompt: str,
-        temperature: float = 0.2,
+        temperature: float = 0,
         max_output_tokens: int = 4096,
     ) -> dict[str, Any]:
         """Generate a JSON object from Vertex AI or Gemini API and parse the result."""

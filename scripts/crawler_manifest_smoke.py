@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -18,9 +19,13 @@ from adk_playwright_agent.tools.crawler_tools import (
     _route_label,
 )
 from adk_playwright_agent.app.context_memory import PageSummary
+from adk_playwright_agent.app.logging import configure_logging
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def main() -> None:
+    configure_logging()
     base_origin = "http://localhost:3101"
     current_url = f"{base_origin}/"
     accepted = _normalize_candidate_link(
@@ -151,7 +156,7 @@ def main() -> None:
         assert failed_destination != destination
         assert failed_destination.name.startswith("route_manifest.failed.")
 
-    print(
+    _LOGGER.info(
         json.dumps(
             {
                 "accepted_path": accepted["path"],

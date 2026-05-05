@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ except ImportError:  # pragma: no cover - dependency guard
 
 _VERTEX = VertexGenAIAdapter()
 _EXCLUDED_DRAFT_CATEGORIES = {"navigate", "open", "export", "import", "unknown"}
+_LOGGER = logging.getLogger(__name__)
 
 
 def draft_test_ideas_with_vertex(
@@ -84,7 +86,13 @@ def draft_test_ideas_with_vertex(
             continue
 
         prompt = _draft_prompt(inferred_site_name, page_payload, summary_payload)
-        result = _VERTEX.generate_json(prompt=prompt, temperature=0.4, max_output_tokens=4096)
+        _LOGGER.debug(
+            "Draft prompt for page %s has %s characters.",
+            page_id,
+            len(prompt),
+        )
+
+        result = _VERTEX.generate_json(prompt=prompt, temperature=0, max_output_tokens=8192)
         if not result.get("ok"):
             errors.append({"reason": str(result.get("error") or "vertex_failed"), "message": str(result.get("message") or ""), "page_id": page_id, "path": str(page_path)})
             continue
@@ -217,9 +225,7 @@ def _draft_prompt(site_name: str, page_payload: dict[str, Any], summary_payload:
         page_payload,
         max_forms=24,
         max_tables=12,
-        snapshot_head_lines=140,
-        snapshot_tail_lines=35,
-        snapshot_char_limit=12000,
+        max_options_per_group=3,
     )
     parts = [
         DRAFT_TEST_CASES_PROMPT,

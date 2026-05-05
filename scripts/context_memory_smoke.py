@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from adk_playwright_agent.app.context_memory import (
     CredentialReference,
@@ -11,9 +12,13 @@ from adk_playwright_agent.app.context_memory import (
     _truncate_text,
     estimate_tokens,
 )
+from adk_playwright_agent.app.logging import configure_logging
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def main() -> None:
+    configure_logging()
     context = CrawlerContext()
     context.long_term_memory.final_goal = "Explore the target SUT and write a route manifest."
     context.long_term_memory.target_app = "example_sut"
@@ -106,7 +111,7 @@ def main() -> None:
     assert truncated.startswith("body > main")
     assert truncated.endswith('input[name="password"]')
 
-    print(
+    _LOGGER.info(
         json.dumps(
             {
                 "recent_feedback_count": len(context.working_memory.recent_feedback),

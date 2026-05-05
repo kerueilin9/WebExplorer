@@ -126,9 +126,7 @@ def _page_summary_prompt(site_name: str, page_payload: dict[str, Any]) -> str:
         page_payload,
         max_forms=20,
         max_tables=10,
-        snapshot_head_lines=120,
-        snapshot_tail_lines=30,
-        snapshot_char_limit=10000,
+        max_options_per_group=3,
     )
     return "\n\n".join(
         [
